@@ -3,13 +3,47 @@
 //! Kept separate from state/actions so each file stays reviewable. These impls
 //! are on the same type and may access the window's private state.
 
-use browser_core::NavigationEvent;
+use browser_core::{NavigationEvent, TabId};
 use browser_ui::{
     TAB_STRIP_HEIGHT, Theme, icon_button, loading_bar, tab_chip, text_button, web_content_host,
 };
-use gpui::{IntoElement, Render, Window, WindowControlArea, div, prelude::*, px};
+use gpui::{
+    AnyElement, Context, IntoElement, Render, SharedString, Window, WindowControlArea, div, img,
+    prelude::*, px,
+};
 
 use super::{BrowserWindow, Tab};
+
+/// Drag payload for reordering tabs.
+#[derive(Clone)]
+struct TabDrag {
+    id: TabId,
+    title: SharedString,
+}
+
+struct TabDragPreview {
+    title: SharedString,
+}
+
+impl Render for TabDragPreview {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = Theme::get(cx);
+        div()
+            .w(px(160.0))
+            .h(px(28.0))
+            .px_3()
+            .flex()
+            .items_center()
+            .rounded_md()
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.accent)
+            .shadow_md()
+            .text_size(px(12.0))
+            .text_color(theme.text)
+            .child(self.title.clone())
+    }
+}
 
 impl BrowserWindow {
     // ----- Rendering ------------------------------------------------------
@@ -31,14 +65,53 @@ impl BrowserWindow {
             .window_control_area(WindowControlArea::Drag)
             .children(tabs.into_iter().enumerate().map(|(index, tab)| {
                 let id = tab.id;
+                let entity = cx.entity();
+                let title = tab.navigation.display_title();
+                // While a tab is loading, a small accent dot takes the
+                // favicon slot so each tab shows its own progress state.
+                let icon: Option<AnyElement> = if tab.navigation.is_loading() {
+                    Some(
+                        div()
+                            .flex_none()
+                            .size(px(14.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(div().size(px(6.0)).rounded_full().bg(theme.accent))
+                            .into_any_element(),
+                    )
+                } else {
+                    self.tab_favicons.get(&id).map(|image| {
+                        div()
+                            .flex_none()
+                            .size(px(14.0))
+                            .child(img(image.clone()).size(px(14.0)).rounded_sm())
+                            .into_any_element()
+                    })
+                };
                 tab_chip(
                     theme,
                     index,
-                    tab.navigation.display_title(),
+                    title.clone(),
+                    icon,
                     Some(id) == active_id,
                     cx.listener(move |this, _event, window, cx| this.activate_tab(id, window, cx)),
                     cx.listener(move |this, _event, window, cx| this.close_tab(id, window, cx)),
                 )
+                .on_drag(
+                    TabDrag {
+                        id,
+                        title: title.into(),
+                    },
+                    |drag: &TabDrag, _position, _window, cx| {
+                        cx.new(|_| TabDragPreview {
+                            title: drag.title.clone(),
+                        })
+                    },
+                )
+                .on_drop(move |drag: &TabDrag, _window, cx| {
+                    entity.update(cx, |this, cx| this.reorder_tab(drag.id, index, cx));
+                })
             }))
             .child(icon_button(
                 theme,
@@ -260,6 +333,7 @@ impl Render for BrowserWindow {
             .on_action(cx.listener(Self::on_stop))
             .on_action(cx.listener(Self::on_new_tab))
             .on_action(cx.listener(Self::on_close_tab))
+            .on_action(cx.listener(Self::on_duplicate_tab))
             .on_action(cx.listener(Self::on_reopen_closed_tab))
             .on_action(cx.listener(Self::on_next_tab))
             .on_action(cx.listener(Self::on_previous_tab))

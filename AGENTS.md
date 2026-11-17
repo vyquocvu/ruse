@@ -69,6 +69,7 @@ HTTPS smoke check, but core tests must be deterministic.
 ./scripts/cargo test --workspace
 ./scripts/m0-probe.sh          # engine embedding behavior
 ./scripts/m1-probe.sh          # browser window, tabs, navigation, typing
+./scripts/m2-probe.sh          # session persistence across a real relaunch
 ```
 
 `scripts/cargo` sets a workspace-local `CARGO_HOME`; use it.

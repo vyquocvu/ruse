@@ -1,23 +1,29 @@
 //! The browser window: tabs, chrome, engine lifetimes and event pumps.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
-use browser_core::{BrowserSettings, NavigationEvent, Tab, TabId, TabSet, resolve_input};
+use browser_core::{
+    BrowserSettings, NavigationEvent, SessionSnapshot, Tab, TabId, TabSet, resolve_input,
+};
 use browser_engine::{Engine, EngineEvent, EngineOptions, Viewport, create_engine};
 use browser_platform::{BrowserShortcut, ShortcutMonitor, native_parent, open_external_url};
+use browser_storage::Storage;
 use browser_ui::{TextInput, TextInputEvent, Theme};
 use gpui::{
-    App, Context, Entity, FocusHandle, Focusable, SharedString, Subscription, Timer, WeakEntity,
-    Window,
+    App, Context, Entity, FocusHandle, Focusable, RenderImage, SharedString, Subscription, Timer,
+    WeakEntity, Window,
 };
+
+use crate::favicon;
 
 mod render;
 
 use crate::actions::{
-    Back, CloseTab, FindInPage, FocusLocation, Forward, HardReload, NewTab, NextTab, OpenSettings,
-    PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ZoomIn, ZoomOut, ZoomReset,
+    Back, CloseTab, DuplicateTab, FindInPage, FocusLocation, Forward, HardReload, NewTab, NextTab,
+    OpenSettings, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ZoomIn, ZoomOut, ZoomReset,
 };
 
 pub struct BrowserWindow {
@@ -26,6 +32,18 @@ pub struct BrowserWindow {
     address: Entity<TextInput>,
     focus_handle: FocusHandle,
     settings: BrowserSettings,
+    storage: Option<Storage>,
+    /// Serialises session writes; see `start_session_writer`.
+    session_sender: Option<async_channel::Sender<SessionSnapshot>>,
+    /// Origin -> icon. Successful icons are reused by every page on the origin.
+    favicon_cache: HashMap<String, Arc<RenderImage>>,
+    tab_favicons: HashMap<TabId, Arc<RenderImage>>,
+    /// Pages that produced no usable icon, so they are not retried every load.
+    favicon_misses: HashSet<String>,
+    /// Page URLs whose icon is currently being fetched.
+    favicon_requests: HashSet<String>,
+    /// JavaScript evaluation id -> (tab, origin, page URL) for icon discovery.
+    pending_favicons: HashMap<u64, (TabId, String, String)>,
     shortcuts: Option<ShortcutMonitor>,
     subscriptions: Vec<Subscription>,
     status: Option<SharedString>,
@@ -42,6 +60,7 @@ impl BrowserWindow {
         cx: &mut Context<Self>,
         address: Entity<TextInput>,
         settings: BrowserSettings,
+        storage: Option<Storage>,
     ) -> Self {
         Self {
             tabs: TabSet::new(),
@@ -49,6 +68,13 @@ impl BrowserWindow {
             address,
             focus_handle: cx.focus_handle(),
             settings,
+            storage,
+            session_sender: None,
+            favicon_cache: HashMap::new(),
+            tab_favicons: HashMap::new(),
+            favicon_misses: HashSet::new(),
+            favicon_requests: HashSet::new(),
+            pending_favicons: HashMap::new(),
             shortcuts: None,
             subscriptions: Vec::new(),
             status: None,
@@ -58,12 +84,17 @@ impl BrowserWindow {
     /// Wires up window-scoped services and opens the startup tab.
     pub fn attach(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.install_shortcut_monitor(window, cx);
+        self.start_session_writer(cx);
         self.spawn_ticker(window, cx);
         self.observe_address(window, cx);
         self.observe_appearance(window, cx);
-        let homepage = self.settings.homepage_or_default().to_owned();
-        self.open_tab(&homepage, window, cx);
-        self.focus_address(window, cx);
+        if self.restore_session(window, cx) {
+            self.focus_address(window, cx);
+        } else {
+            let homepage = self.settings.homepage_or_default().to_owned();
+            self.open_tab(&homepage, window, cx);
+            self.focus_address(window, cx);
+        }
     }
 
     fn install_shortcut_monitor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -172,6 +203,110 @@ impl BrowserWindow {
         }
     }
 
+    /// Serialises session writes on one background task so an older snapshot
+    /// can never overwrite a newer one.
+    fn start_session_writer(&mut self, cx: &mut Context<Self>) {
+        let Some(storage) = self.storage.clone() else {
+            return;
+        };
+        let (sender, receiver) = async_channel::unbounded();
+        self.session_sender = Some(sender);
+        cx.background_executor()
+            .spawn(async move {
+                while let Ok(snapshot) = receiver.recv().await {
+                    if let Err(error) = storage.save_session(&snapshot) {
+                        tracing::warn!(%error, "could not save the browser session");
+                    }
+                }
+            })
+            .detach();
+    }
+
+    fn persist_session(&self) {
+        let Some(sender) = self.session_sender.as_ref() else {
+            return;
+        };
+        let snapshot = SessionSnapshot::capture(&self.tabs);
+        if let Err(error) = sender.try_send(snapshot) {
+            tracing::debug!(%error, "session writer unavailable");
+        }
+    }
+
+    /// Restores the last session, if any. Returns false when there is nothing to
+    /// restore and a homepage tab should be opened instead.
+    fn restore_session(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(storage) = self.storage.as_ref() else {
+            return false;
+        };
+        let snapshot = match storage.load_session() {
+            Ok(Some(snapshot)) if !snapshot.is_empty() => snapshot,
+            Ok(_) => return false,
+            Err(error) => {
+                tracing::warn!(%error, "ignoring unreadable session file");
+                self.status = Some("Could not read the previous session".into());
+                return false;
+            }
+        };
+
+        let active = snapshot.active.min(snapshot.tabs.len().saturating_sub(1));
+        for (index, saved) in snapshot.tabs.into_iter().enumerate() {
+            let id = self.tabs.open(&saved.url);
+            if let Some(tab) = self.tabs.tab_mut(id) {
+                tab.navigation.url = saved.url.clone();
+                tab.navigation.title = saved.title;
+                // Background tabs do not hit the network until activated.
+                if index != active && !saved.url.is_empty() {
+                    tab.navigation.status = browser_core::LoadStatus::Idle;
+                }
+            }
+            let initial = if index == active {
+                saved.url.as_str()
+            } else {
+                ""
+            };
+            self.attach_engine(id, initial, window, cx);
+        }
+        self.tabs.activate_index(active);
+        self.update_engine_visibility();
+        self.sync_address(window, cx);
+        self.persist_session();
+        cx.notify();
+        true
+    }
+
+    /// Restores a tab's page when it first becomes visible after session
+    /// restore (background tabs are intentionally not loaded at startup).
+    fn ensure_tab_loaded(&mut self, id: TabId, cx: &mut Context<Self>) {
+        let Some(engine) = self.runtimes.get(&id).cloned() else {
+            return;
+        };
+        if engine.current_url().is_some() {
+            return;
+        }
+        let Some(url) = self
+            .tabs
+            .tab(id)
+            .map(|tab| tab.navigation.url.clone())
+            .filter(|url| !url.is_empty())
+        else {
+            return;
+        };
+        if let Some(tab) = self.tabs.tab_mut(id) {
+            tab.navigation
+                .apply(NavigationEvent::Started { url: url.clone() });
+        }
+        if let Err(error) = engine.navigate(&url) {
+            tracing::error!(%error, %url, "could not restore tab");
+            if let Some(tab) = self.tabs.tab_mut(id) {
+                tab.navigation.apply(NavigationEvent::Failed {
+                    url,
+                    message: error.to_string(),
+                });
+            }
+        }
+        cx.notify();
+    }
+
     pub fn active_engine(&self) -> Option<Rc<dyn Engine>> {
         let id = self.tabs.active_id()?;
         self.runtimes.get(&id).cloned()
@@ -199,6 +334,7 @@ impl BrowserWindow {
             });
         }
         self.sync_address(window, cx);
+        self.persist_session();
         cx.notify();
         Some(id)
     }
@@ -261,6 +397,24 @@ impl BrowserWindow {
         if self.tabs.tab(id).is_none() {
             return;
         }
+
+        // Favicon discovery results come back through the script channel.
+        if let EngineEvent::ScriptResult { id, value } = &event
+            && let Some((tab_id, origin, page_url)) = self.pending_favicons.remove(id)
+        {
+            tracing::debug!(?value, "favicon hint result");
+            let icon_url = value
+                .as_str()
+                .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
+                .map(str::to_owned);
+            self.fetch_favicon(tab_id, origin, page_url, icon_url, cx);
+            return;
+        }
+
+        let finished_url = match &event {
+            EngineEvent::LoadFinished { url, .. } => Some(url.clone()),
+            _ => None,
+        };
 
         // Events that affect the whole window rather than just this tab.
         match &event {
@@ -337,9 +491,97 @@ impl BrowserWindow {
                 set_window_title(window, &tab.navigation);
             }
         }
+        if let Some(url) = finished_url {
+            self.schedule_favicon(id, &url, cx);
+        }
         if notify {
             self.sync_address(window, cx);
+            self.persist_session();
             cx.notify();
+        }
+    }
+
+    /// Looks up the page's declared icon and fetches it if this origin has no
+    /// cached icon yet.
+    fn schedule_favicon(&mut self, tab_id: TabId, page_url: &str, cx: &mut Context<Self>) {
+        let Ok(parsed) = url::Url::parse(page_url) else {
+            return;
+        };
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return;
+        }
+        let origin = parsed.origin().ascii_serialization();
+        if let Some(image) = self.favicon_cache.get(&origin) {
+            self.tab_favicons.insert(tab_id, image.clone());
+            cx.notify();
+            return;
+        }
+        let page_key = page_url.to_owned();
+        if self.favicon_misses.contains(&page_key) || self.favicon_requests.contains(&page_key) {
+            return;
+        }
+        if let Some(engine) = self.runtimes.get(&tab_id).cloned() {
+            tracing::debug!(%origin, tab = %tab_id.get(), "asking page for favicon");
+            let id = engine.evaluate_script_json(
+                "(() => { const link = document.querySelector('link[rel~=\"icon\"][href]'); return link ? link.href : null; })()",
+            );
+            self.pending_favicons.insert(id, (tab_id, origin, page_key));
+        } else {
+            self.fetch_favicon(tab_id, origin, page_key, None, cx);
+        }
+    }
+
+    fn fetch_favicon(
+        &mut self,
+        tab_id: TabId,
+        origin: String,
+        page_key: String,
+        declared_url: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.favicon_requests.insert(page_key.clone()) {
+            return;
+        }
+        tracing::debug!(%origin, ?declared_url, "fetching favicon");
+        let origin_for_task = origin.clone();
+        let declared = declared_url.clone();
+        let (bytes_tx, bytes_rx) = async_channel::bounded(1);
+        // Icon bytes are fetched off the UI thread; ureq is blocking.
+        std::thread::spawn(move || {
+            let bytes = favicon::fetch_icon(&origin_for_task, declared.as_deref());
+            let _ = bytes_tx.send_blocking(bytes);
+        });
+        cx.spawn(async move |this, cx| {
+            let bytes = bytes_rx.recv().await.ok().flatten();
+            let image = bytes.and_then(|bytes| favicon::decode_icon(&bytes));
+            let _ = this.update(cx, |this, cx| {
+                this.favicon_loaded(origin, page_key, tab_id, image, cx)
+            });
+        })
+        .detach();
+    }
+
+    fn favicon_loaded(
+        &mut self,
+        origin: String,
+        page_key: String,
+        tab_id: TabId,
+        image: Option<Arc<RenderImage>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.favicon_requests.remove(&page_key);
+        tracing::debug!(%origin, found = image.is_some(), "favicon fetch finished");
+        match image {
+            Some(image) => {
+                self.favicon_cache.insert(origin, image.clone());
+                if self.tabs.tab(tab_id).is_some() {
+                    self.tab_favicons.insert(tab_id, image);
+                    cx.notify();
+                }
+            }
+            None => {
+                self.favicon_misses.insert(page_key);
+            }
         }
     }
 
@@ -432,10 +674,12 @@ impl BrowserWindow {
             return;
         }
         self.update_engine_visibility();
+        self.ensure_tab_loaded(id, cx);
         self.sync_address(window, cx);
         if let Some(engine) = self.active_engine() {
             engine.focus_page();
         }
+        self.persist_session();
         cx.notify();
     }
 
@@ -443,6 +687,7 @@ impl BrowserWindow {
         if let Some(engine) = self.runtimes.remove(&id) {
             engine.close();
         }
+        self.tab_favicons.remove(&id);
         self.tabs.close(id);
         if self.tabs.is_empty() {
             self.shutdown(window, cx);
@@ -450,6 +695,7 @@ impl BrowserWindow {
         }
         self.update_engine_visibility();
         self.sync_address(window, cx);
+        self.persist_session();
         cx.notify();
     }
 
@@ -485,6 +731,61 @@ impl BrowserWindow {
             self.attach_engine(id, "", window, cx);
         }
         self.sync_address(window, cx);
+        cx.notify();
+    }
+
+    /// Activates the tab at `index`, used by probes and future Cmd+1..9.
+    pub fn activate_tab_index(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(id) = self.tabs.tabs().get(index).map(|tab| tab.id) {
+            self.activate_tab(id, window, cx);
+        }
+    }
+
+    /// Moves the tab at `from_index` to `to_index` (probe/drag helper).
+    pub fn reorder_tab_by_index(
+        &mut self,
+        from_index: usize,
+        to_index: usize,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(id) = self.tabs.tabs().get(from_index).map(|tab| tab.id) {
+            self.reorder_tab(id, to_index, cx);
+        }
+    }
+
+    /// Moves a tab to `to_index`, used by drag-and-drop reordering.
+    pub fn reorder_tab(&mut self, from: TabId, to_index: usize, cx: &mut Context<Self>) {
+        let Some(from_index) = self.tabs.index_of(from) else {
+            return;
+        };
+        if self.tabs.move_tab(from_index, to_index) {
+            self.persist_session();
+            cx.notify();
+        }
+    }
+
+    /// Duplicates the active tab next to itself and loads the same URL.
+    pub fn duplicate_active_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(active) = self.tabs.active_id() else {
+            return;
+        };
+        let Some(new_id) = self.tabs.duplicate(active) else {
+            return;
+        };
+        let url = self
+            .tabs
+            .tab(new_id)
+            .map(|tab| tab.navigation.url.clone())
+            .unwrap_or_default();
+        self.attach_engine(new_id, &url, window, cx);
+        self.update_engine_visibility();
+        self.sync_address(window, cx);
+        self.persist_session();
         cx.notify();
     }
 
@@ -591,6 +892,7 @@ impl BrowserWindow {
                     title: tab.navigation.display_title(),
                     url: tab.navigation.url.clone(),
                     active: Some(tab.id) == active_id,
+                    has_favicon: self.tab_favicons.contains_key(&tab.id),
                 })
                 .collect(),
         }
@@ -697,6 +999,10 @@ impl BrowserWindow {
         self.close_active_tab(window, cx);
     }
 
+    fn on_duplicate_tab(&mut self, _: &DuplicateTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.duplicate_active_tab(window, cx);
+    }
+
     fn on_reopen_closed_tab(
         &mut self,
         _: &ReopenClosedTab,
@@ -758,6 +1064,7 @@ pub struct TabSnapshot {
     pub title: String,
     pub url: String,
     pub active: bool,
+    pub has_favicon: bool,
 }
 
 fn set_window_title(window: &mut Window, navigation: &browser_core::NavigationState) {

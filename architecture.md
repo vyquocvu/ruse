@@ -154,9 +154,24 @@ when it is not focused or when navigation completes without user edits.
 
 ## Persistence
 
-`browser-storage` owns a single SQLite database under
-`~/Library/Application Support/GPUI Browser/browser.sqlite3` (created on first
-run) and atomic JSON for session state. Private sessions never write.
+`browser-storage` owns the data directory
+(`~/Library/Application Support/GPUI Browser`, overridable with
+`GPUI_BROWSER_DATA_DIR`). The session is atomic JSON (`session.json`): capture
+is a pure `browser-core` model, writes are serialised through one background
+writer task, and restore clamps/tranks the file defensively. Private sessions
+must never write here (M5).
+
+History, bookmarks and settings will live in SQLite in the same directory when
+M3 lands; the session file stays JSON because it is small, human-inspectable and
+read once at startup.
+
+## Favicons
+
+`WKWebView` has no favicon API, so the app asks the page for
+`link[rel~="icon"]`, falls back to `/favicon.ico`, and fetches the icon on a
+worker thread (`ureq`). Successful icons are cached per origin and rendered with
+`gpui::img`; the loading dot occupies the same slot while a tab is busy
+(ADR-0005).
 
 ## Platform strategy
 
@@ -174,5 +189,7 @@ abstractions that are not backed by a working adapter.
   from different origins may share a web content process. Do not claim
   otherwise.
 - DevTools availability depends on `WKWebView.isInspectable` (macOS 13.3+).
-- No favicon API exists in WKWebView; favicons require page hints or a
-  network fetch.
+- No favicon API exists in WKWebView; icons come from page hints or
+  `/favicon.ico` (ADR-0005). SVG-only icons are not decoded.
+- Restored tabs do not restore WebKit's back/forward history; they load the URL
+  fresh.

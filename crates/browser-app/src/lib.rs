@@ -6,8 +6,10 @@
 
 pub mod actions;
 pub mod browser_window;
+pub mod favicon;
 
 use browser_core::BrowserSettings;
+use browser_storage::Storage;
 use browser_ui::{TextInput, Theme, bind_text_input_keys};
 use gpui::{
     App, AppContext, Bounds, SharedString, TitlebarOptions, WindowBounds, WindowHandle,
@@ -50,7 +52,14 @@ pub fn launch(cx: &mut App) -> gpui::Result<WindowHandle<BrowserWindow>> {
             Theme::install(cx, Theme::for_appearance(window.appearance()));
             let address = cx.new(|cx| TextInput::new(cx, "Search or enter address", px(13.0)));
             let settings = BrowserSettings::default();
-            let browser = cx.new(|cx| BrowserWindow::new(cx, address, settings));
+            let storage = match Storage::open_default() {
+                Ok(storage) => Some(storage),
+                Err(error) => {
+                    tracing::warn!(%error, "session persistence is disabled");
+                    None
+                }
+            };
+            let browser = cx.new(|cx| BrowserWindow::new(cx, address, settings, storage));
             browser.update(cx, |this, cx| this.attach(window, cx));
             browser
         },

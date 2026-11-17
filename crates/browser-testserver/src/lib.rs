@@ -102,46 +102,81 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
         body.len()
     );
     stream.write_all(response.as_bytes())?;
-    stream.write_all(body.as_bytes())?;
+    stream.write_all(&body)?;
     stream.flush()
 }
 
-fn route(path: &str) -> (&'static str, &'static str, String, &'static str) {
+fn route(path: &str) -> (&'static str, &'static str, Vec<u8>, &'static str) {
     match path.split('?').next().unwrap_or("/") {
-        "/" => ("200 OK", "text/html; charset=utf-8", INDEX.to_owned(), ""),
-        "/css" => ("200 OK", "text/css", "h1 { color: rgb(12, 120, 90); }".to_owned(), ""),
+        "/" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            INDEX.as_bytes().to_vec(),
+            "",
+        ),
+        "/css" => (
+            "200 OK",
+            "text/css",
+            b"h1 { color: rgb(12, 120, 90); }".to_vec(),
+            "",
+        ),
         "/js" => (
             "200 OK",
             "application/javascript",
-            "window.__testLoaded = true; document.addEventListener('DOMContentLoaded', function () { document.getElementById('js').textContent = 'js-ok'; });"
-                .to_owned(),
+            b"window.__testLoaded = true; document.addEventListener('DOMContentLoaded', function () { document.getElementById('js').textContent = 'js-ok'; });"
+                .to_vec(),
             "",
         ),
-        "/page2" => ("200 OK", "text/html; charset=utf-8", PAGE_TWO.to_owned(), ""),
+        "/page2" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            PAGE_TWO.as_bytes().to_vec(),
+            "",
+        ),
         "/keyboard" => (
             "200 OK",
             "text/html; charset=utf-8",
-            KEYBOARD.to_owned(),
+            KEYBOARD.as_bytes().to_vec(),
             "",
         ),
         "/redirect" => (
             "302 Found",
             "text/plain",
-            "redirecting".to_owned(),
+            b"redirecting".to_vec(),
             "Location: /page2\r\n",
         ),
         "/download" => (
             "200 OK",
             "application/octet-stream",
-            "download-payload".to_owned(),
+            b"download-payload".to_vec(),
             "Content-Disposition: attachment; filename=\"payload.txt\"\r\n",
         ),
         "/slow" => {
             thread::sleep(Duration::from_millis(800));
-            ("200 OK", "text/html; charset=utf-8", PAGE_TWO.to_owned(), "")
+            (
+                "200 OK",
+                "text/html; charset=utf-8",
+                PAGE_TWO.as_bytes().to_vec(),
+                "",
+            )
         }
-        "/favicon.ico" => ("404 Not Found", "text/plain", "no icon".to_owned(), ""),
-        _ => ("404 Not Found", "text/html; charset=utf-8", NOT_FOUND.to_owned(), ""),
+        // Only the declared icon is served; `/favicon.ico` is deliberately
+        // missing so tests prove the page hint is discovered, not just the
+        // implicit fallback.
+        "/icon" => ("200 OK", "image/png", ICON_PNG.to_vec(), ""),
+        "/favicon.ico" => ("404 Not Found", "text/plain", b"no icon".to_vec(), ""),
+        "/favicon-test" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            FAVICON_PAGE.as_bytes().to_vec(),
+            "",
+        ),
+        _ => (
+            "404 Not Found",
+            "text/html; charset=utf-8",
+            NOT_FOUND.as_bytes().to_vec(),
+            "",
+        ),
     }
 }
 
@@ -162,6 +197,20 @@ const INDEX: &str = r#"<!doctype html>
 const PAGE_TWO: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Second Page</title></head>
 <body><h1>page-two</h1><a href="/">back</a></body></html>"#;
+
+/// 1x1 opaque PNG used as a deterministic favicon.
+const ICON_PNG: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0,
+    0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99, 0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];
+
+const FAVICON_PAGE: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>Favicon Fixture</title>
+<link rel="icon" href="/icon">
+</head><body><h1>favicon</h1></body></html>"#;
 
 const KEYBOARD: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Keyboard Fixture</title></head>

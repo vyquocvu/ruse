@@ -35,9 +35,14 @@ by `scripts/m0-probe.sh`.
       Cmd+R, Cmd+[ , Cmd+] .
 - [ ] Cmd+C / Cmd+V / Cmd+A work in page inputs and in the address bar.
 
-## Tabs (when implemented)
+## Tabs
 
-- [ ] New tab, close tab, switch tab, reorder tab.
+- [ ] *auto* New tab, close tab, duplicate, reorder (m1/m2 probes cover the
+      state changes).
+- [ ] Drag a tab by its title onto another tab; order follows the drop and is
+      persisted across relaunch.
+- [ ] Tabs show a tiny accent dot while their page is loading, then a favicon.
+- [ ] Favicons render at the right size in both light and dark themes.
 - [ ] Closing the last tab opens a new tab page (or closes the window, per spec).
 - [ ] Session restores after quit/relaunch.
 - [ ] A crashed web process shows a recoverable error, not a browser crash.

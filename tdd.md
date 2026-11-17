@@ -46,7 +46,10 @@ Two probe binaries exist:
 - `m0-probe` verifies the engine embedding itself.
 - `m1-probe` drives the real browser window (GPUI chrome + tabs + engine event
   pumps) and synthesises real AppKit key events, so typing and keyboard focus
-  handoff are exercised end-to-end.
+  handoff are exercised end-to-end. It also verifies favicon discovery/decode.
+- `m2-probe` runs in two OS processes: phase 1 creates tabs, duplicates, closes
+  and reorders them, then waits for the session file; phase 2 relaunches and
+  verifies restored order, active tab and lazy loading.
 
 `m1-probe` asserts: startup page, address-bar sync, URL navigation, back and
 forward, new tab + tab navigation, tab close, navigation error surface, recovery,
@@ -104,6 +107,7 @@ test.
 ./scripts/cargo clippy --workspace --all-targets -- -D warnings
 ./scripts/m0-probe.sh
 ./scripts/m1-probe.sh
+./scripts/m2-probe.sh
 ```
 
 ## Quality gates

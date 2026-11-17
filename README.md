@@ -10,8 +10,8 @@ and validated today.
 
 ## Status
 
-Milestones **M0 (engine feasibility)** and **M1 (browser foundation)** are
-complete:
+Milestones **M0 (engine feasibility)**, **M1 (browser foundation)** and
+**M2 (tabs and sessions)** are complete:
 
 - Real native window with GPUI chrome: tab strip, toolbar, address bar, loading
   indicator, error page and a GPUI new-tab page.
@@ -22,10 +22,14 @@ complete:
   by an automated end-to-end probe.
 - Browser shortcuts while the page focused are forwarded by a local NSEvent
   monitor (manual verification for real key events).
-- Verified evidence: `docs/milestones/M0.md`, `docs/milestones/M1.md`.
+- Drag-and-drop tab reordering, duplicate tab, per-tab loading indicators.
+- Favicons discovered from page hints and fetched off the UI thread.
+- Session persistence with atomic writes and restore; background tabs are
+  lazy-loaded on activation.
+- Verified evidence: `docs/milestones/M0.md`, `M1.md`, `M2.md`.
 
-History, bookmarks, downloads, settings UI, favicons and private browsing are
-next — see `ROADMAP.md`.
+History, bookmarks, downloads, settings UI and private browsing are next — see
+`ROADMAP.md`.
 
 ## Requirements
 
@@ -48,8 +52,9 @@ builds also work in restricted environments.
 ```sh
 ./scripts/cargo build -p browser-app --bin m0-probe --bin m1-probe
 ./scripts/m0-probe.sh        # engine embedding: HTTPS, JS, CSS, resize, 2 views
-./scripts/m1-probe.sh        # browser window: tabs, navigation, typing, errors
-cat target/m0-report.json target/m1-report.json
+./scripts/m1-probe.sh        # browser window: tabs, navigation, typing, favicon
+./scripts/m2-probe.sh        # session persistence across two processes
+cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json
 ```
 
 The M0 probe writes a page snapshot to `target/m0-snapshot.png`. The M1 probe
@@ -65,6 +70,7 @@ drives the real browser window with synthetic AppKit key events.
 | ⌘R / ⇧⌘R | Reload / reload bypassing cache |
 | ⌘T / ⌘W | New tab / close tab |
 | ⇧⌘T | Reopen closed tab |
+| ⇧⌘D | Duplicate tab |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset |
 | ⌘Q | Quit |
@@ -89,6 +95,7 @@ drives the real browser window with synthetic AppKit key events.
 - `docs/decisions/` — ADRs (embedding, engine choice, overlays, tabs)
 - `docs/milestones/M0.md` — feasibility report
 - `docs/milestones/M1.md` — browser foundation report
+- `docs/milestones/M2.md` — tabs and sessions report
 
 ## Known limitations
 

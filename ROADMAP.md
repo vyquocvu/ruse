@@ -30,16 +30,20 @@ checks, including real synthetic keyboard input into chrome and page).
 | M1.8 Homepage + search engine settings model | done | `BrowserSettings` with tested defaults and sanitisation |
 | M1.9 M1 verification: probe extension + manual checklist | done | `scripts/m1-probe.sh`, clippy/tests green |
 
-## M2 — Tabs and sessions (next)
+## M2 — Tabs and sessions — **done**
 
-- Reorder tabs by drag; duplicate tab UI affordance.
-- Rich new tab page (GPUI, hides page view) with recent sites/search.
-- Favicons (page hint / fetch) and per-tab loading indicators.
-- Session persistence + restore across restarts; session file format tests.
-- Crash recovery UX for `webViewWebContentProcessDidTerminate` (retry/reload).
-- Pin tabs mentally prepared but UI in M4.
+Evidence: `docs/milestones/M2.md`; `m2-probe` (two processes: create session,
+relaunch, verify order/active/lazy load); `m1-probe` favicon check.
 
-## M3 — Browser essentials
+- Tabs: create/close/switch/cycle/reorder (drag)/duplicate; per-tab busy dot.
+- Favicons from page hints + `/favicon.ico` fallback, fetched off-thread.
+- Session persistence (atomic JSON, ordered background writes) and restore.
+- Lazy loading of restored background tabs.
+- Web-content process termination shows a recoverable error page (not
+  automatically triggerable through public APIs).
+- History within a restored tab is not persisted (fresh engine history).
+
+## M3 — Browser essentials (next)
 
 - History (SQLite, searchable), bookmarks + folders, bookmark bar.
 - Downloads: WKDownload destination selection, progress, cancel, open/reveal.

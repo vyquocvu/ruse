@@ -47,6 +47,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 url = "2"
 async-channel = "2.5"
 futures-lite = "2"
+futures = "0.3"
+ureq = { version = "2", default-features = false, features = ["tls", "gzip"] }
+smallvec = "1"
+image = { version = "0.25", default-features = false, features = ["png", "ico", "jpeg", "gif", "webp", "bmp"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["sync", "rt", "time"] }
 

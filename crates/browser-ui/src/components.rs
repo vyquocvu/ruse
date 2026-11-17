@@ -80,10 +80,11 @@ pub fn tab_chip(
     theme: &Theme,
     index: usize,
     title: impl Into<SharedString>,
+    icon: Option<gpui::AnyElement>,
     active: bool,
     on_activate: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
+) -> gpui::Stateful<gpui::Div> {
     let background = if active {
         theme.tab_active
     } else {
@@ -109,25 +110,29 @@ pub fn tab_chip(
             theme.tab_inactive
         })
         .overflow_hidden()
-        .child(
-            div()
+        .child({
+            let mut title_row = div()
                 .id(("tab-title", index))
                 .flex()
                 .flex_1()
                 .h_full()
                 .items_center()
+                .gap_2()
                 .px_3()
                 .overflow_hidden()
                 .cursor_pointer()
-                .on_click(move |event, window, cx| on_activate(event, window, cx))
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(px(12.0))
-                        .text_color(text_color)
-                        .child(title),
-                ),
-        )
+                .on_click(move |event, window, cx| on_activate(event, window, cx));
+            if let Some(icon) = icon {
+                title_row = title_row.child(icon);
+            }
+            title_row.child(
+                div()
+                    .truncate()
+                    .text_size(px(12.0))
+                    .text_color(text_color)
+                    .child(title),
+            )
+        })
         .child(
             div()
                 .id(("tab-close", index))

@@ -18,9 +18,14 @@ const REPORT_PATH: &str = "target/m1-report.json";
 
 fn main() {
     browser_app::init_logging();
+    let data_dir = PathBuf::from("target/m1-data");
+    let _ = std::fs::remove_dir_all(&data_dir);
+    // Safety: single-threaded setup before the app launches.
+    unsafe { std::env::set_var(browser_storage::DATA_DIR_ENV, &data_dir) };
     let server = TestServer::start().expect("start fixture server");
     let fixture_url = server.url("/");
     let page_two_url = server.url("/page2");
+    let favicon_url = server.url("/favicon-test");
     let fixture_origin = server.origin();
     let keyboard_url = server.url("/keyboard");
 
@@ -38,6 +43,7 @@ fn main() {
                 &fixture_url,
                 &page_two_url,
                 &keyboard_url,
+                &favicon_url,
                 &fixture_origin,
             )
             .await;
@@ -57,6 +63,7 @@ async fn run_probe(
     fixture_url: &str,
     page_two_url: &str,
     keyboard_url: &str,
+    favicon_url: &str,
     fixture_origin: &str,
 ) -> Result<Report, String> {
     let mut report = Report::default();
@@ -238,7 +245,30 @@ async fn run_probe(
     .ok_or("both keys did not reach page content")?;
     report.pass("page_keyboard", page_keys.active_title.clone());
 
-    // 10. Resize the real window; browser state must remain consistent.
+    // 10. Favicon discovery + fetch from the page's declared icon.
+    update(handle, cx, |browser, window, cx| {
+        browser.navigate(favicon_url, window, cx)
+    })?;
+    let favicon = wait_for(handle, cx, Duration::from_secs(15), |snapshot| {
+        !snapshot.loading
+            && snapshot.active_title == "Favicon Fixture"
+            && snapshot.tabs.first().is_some_and(|tab| tab.has_favicon)
+    })
+    .await
+    .ok_or("favicon was not discovered or decoded")?;
+    report.pass(
+        "favicon",
+        format!(
+            "decoded favicon for {}",
+            favicon
+                .tabs
+                .first()
+                .map(|tab| tab.url.as_str())
+                .unwrap_or("")
+        ),
+    );
+
+    // 11. Resize the real window; browser state must remain consistent.
     let before_resize = read_snapshot(handle, cx)?;
     handle
         .update(cx, |_browser, window, _cx| {
