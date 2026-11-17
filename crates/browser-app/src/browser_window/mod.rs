@@ -11,20 +11,23 @@ use browser_core::{
 };
 use browser_engine::{Engine, EngineEvent, EngineOptions, Viewport, create_engine};
 use browser_platform::{BrowserShortcut, ShortcutMonitor, native_parent, open_external_url};
-use browser_storage::{HistoryStore, Storage};
+use browser_storage::{BookmarkStore, HistoryStore, Storage};
 use browser_ui::{TextInput, TextInputEvent, Theme};
 use gpui::{
-    App, Context, Entity, FocusHandle, Focusable, RenderImage, SharedString, Subscription, Timer,
-    WeakEntity, Window,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, RenderImage, SharedString,
+    Subscription, Timer, WeakEntity, Window, px,
 };
 
 use crate::favicon;
 
+mod bookmarks;
+mod downloads;
 mod render;
 
 use crate::actions::{
-    Back, CloseTab, DuplicateTab, FindInPage, FocusLocation, Forward, HardReload, NewTab, NextTab,
-    OpenSettings, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ToggleHistory, ZoomIn, ZoomOut,
+    Back, CloseTab, CopyUrl, DuplicateTab, FindInPage, FindNext, FindPrevious, FocusLocation,
+    Forward, HardReload, NewTab, NextTab, OpenSettings, PreviousTab, Quit, Reload, ReopenClosedTab,
+    Stop, ToggleBookmark, ToggleBookmarks, ToggleDownloads, ToggleHistory, ZoomIn, ZoomOut,
     ZoomReset,
 };
 
@@ -47,10 +50,15 @@ pub struct BrowserWindow {
     /// JavaScript evaluation id -> (tab, origin, page URL) for icon discovery.
     pending_favicons: HashMap<u64, (TabId, String, String)>,
     history: Option<HistoryStore>,
+    bookmarks: bookmarks::BookmarksState,
     overlay: Overlay,
     history_entries: Vec<HistoryEntry>,
     history_loading: bool,
     history_error: Option<String>,
+    find_open: bool,
+    find_input: Option<Entity<TextInput>>,
+    find_result: Option<bool>,
+    downloads: downloads::DownloadsState,
     shortcuts: Option<ShortcutMonitor>,
     subscriptions: Vec<Subscription>,
     status: Option<SharedString>,
@@ -72,6 +80,11 @@ impl BrowserWindow {
         let history = storage
             .as_ref()
             .map(|storage| HistoryStore::in_directory(storage.root()));
+        let bookmarks = bookmarks::BookmarksState::new(
+            storage
+                .as_ref()
+                .map(|storage| BookmarkStore::in_directory(storage.root())),
+        );
         Self {
             tabs: TabSet::new(),
             runtimes: HashMap::new(),
@@ -86,10 +99,15 @@ impl BrowserWindow {
             favicon_requests: HashSet::new(),
             pending_favicons: HashMap::new(),
             history,
+            bookmarks,
             overlay: Overlay::None,
             history_entries: Vec::new(),
             history_loading: false,
             history_error: None,
+            find_open: false,
+            find_input: None,
+            find_result: None,
+            downloads: downloads::DownloadsState::default(),
             shortcuts: None,
             subscriptions: Vec::new(),
             status: None,
@@ -181,6 +199,7 @@ impl BrowserWindow {
     /// Polls engine state that WebKit does not notify us about cheaply: load
     /// progress, SPA titles and same-document URL changes.
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.update_download_progress(cx);
         let Some(id) = self.tabs.active_id() else {
             return;
         };
@@ -375,6 +394,7 @@ impl BrowserWindow {
             viewport: Viewport::default(),
             initial_url,
             private: false,
+            downloads_dir: browser_platform::downloads_directory(),
         }) {
             Ok(instance) => instance,
             Err(error) => {
@@ -426,6 +446,11 @@ impl BrowserWindow {
             return;
         }
 
+        if let EngineEvent::FindResult { found } = &event {
+            self.handle_find_result(*found, cx);
+            return;
+        }
+
         let finished_url = match &event {
             EngineEvent::LoadFinished { url, .. } => Some(url.clone()),
             _ => None,
@@ -433,6 +458,34 @@ impl BrowserWindow {
 
         // Events that affect the whole window rather than just this tab.
         match &event {
+            EngineEvent::BrowsingDataCleared => {
+                self.status = Some("Browsing data cleared".into());
+                cx.notify();
+                return;
+            }
+            EngineEvent::DownloadStarted {
+                url,
+                filename,
+                path,
+                expected_bytes,
+            } => {
+                self.handle_download_started(
+                    url.clone(),
+                    filename.clone(),
+                    path.clone(),
+                    *expected_bytes,
+                    cx,
+                );
+                return;
+            }
+            EngineEvent::DownloadFinished {
+                path,
+                success,
+                message,
+            } => {
+                self.handle_download_finished(path.clone(), *success, message.clone(), cx);
+                return;
+            }
             EngineEvent::NewWindowRequested { url } => {
                 self.open_tab(url, window, cx);
                 return;
@@ -442,13 +495,6 @@ impl BrowserWindow {
                     tracing::warn!(%error, %url, "could not open external URL");
                     self.status = Some(format!("Could not open {url}").into());
                 }
-                cx.notify();
-                return;
-            }
-            EngineEvent::DownloadRequested { url, .. } => {
-                // Downloads are implemented in M3; say so instead of failing
-                // silently when a site offers a file.
-                self.status = Some(format!("Downloads are not available yet ({url})").into());
                 cx.notify();
                 return;
             }
@@ -492,6 +538,8 @@ impl BrowserWindow {
                 EngineEvent::ProcessTerminated => {
                     tab.navigation.apply(NavigationEvent::ProcessTerminated);
                 }
+                EngineEvent::FindResult { .. } => {}
+                EngineEvent::BrowsingDataCleared => {}
                 EngineEvent::ScriptResult { .. }
                 | EngineEvent::ScriptError { .. }
                 | EngineEvent::SnapshotSaved { .. }
@@ -500,7 +548,8 @@ impl BrowserWindow {
                 }
                 EngineEvent::NewWindowRequested { .. }
                 | EngineEvent::ExternalSchemeRequested { .. }
-                | EngineEvent::DownloadRequested { .. } => unreachable!("handled above"),
+                | EngineEvent::DownloadStarted { .. }
+                | EngineEvent::DownloadFinished { .. } => unreachable!("handled above"),
             }
             if notify && is_active {
                 set_window_title(window, &tab.navigation);
@@ -914,6 +963,62 @@ impl BrowserWindow {
                 .collect(),
             history_ids: self.history_entries.iter().map(|entry| entry.id).collect(),
             history_loading: self.history_loading,
+            bookmarks_count: self.bookmarks.bookmarks.len(),
+            bookmark_urls: self
+                .bookmarks
+                .bookmarks
+                .iter()
+                .map(|bookmark| bookmark.url.clone())
+                .collect(),
+            bookmark_folders: self
+                .bookmarks
+                .folders
+                .iter()
+                .map(|folder| folder.name.clone())
+                .collect(),
+            bookmark_folder_ids: self
+                .bookmarks
+                .folders
+                .iter()
+                .map(|folder| folder.id)
+                .collect(),
+            bookmark_ids: self
+                .bookmarks
+                .bookmarks
+                .iter()
+                .map(|bookmark| bookmark.id)
+                .collect(),
+            bookmark_folder_of: self
+                .bookmarks
+                .bookmarks
+                .iter()
+                .map(|bookmark| bookmark.folder_id)
+                .collect(),
+            bookmarked_active: self
+                .tabs
+                .active_tab()
+                .is_some_and(|tab| self.bookmarks.is_bookmarked(&tab.navigation.url)),
+            find_open: self.find_open,
+            find_found: self.find_result,
+            downloads_count: self.downloads.entries.len(),
+            download_paths: self
+                .downloads
+                .entries
+                .iter()
+                .map(|entry| entry.path.display().to_string())
+                .collect(),
+            download_statuses: self
+                .downloads
+                .entries
+                .iter()
+                .map(|entry| entry.status.as_str().to_owned())
+                .collect(),
+            downloads_completed: self
+                .downloads
+                .entries
+                .iter()
+                .filter(|entry| entry.status == downloads::DownloadStatus::Completed)
+                .count(),
             tabs: self
                 .tabs
                 .tabs()
@@ -942,6 +1047,102 @@ impl BrowserWindow {
         self.tabs
             .tab(id)
             .is_some_and(|tab| !tab.navigation.url.is_empty() && tab.navigation.error.is_none())
+    }
+
+    pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.find_open = true;
+        if self.find_input.is_none() {
+            let input = cx.new(|cx| TextInput::new(cx, "Find in page", px(13.0)));
+            let subscription = cx.subscribe_in(
+                &input,
+                window,
+                |this, _input, event: &TextInputEvent, window, cx| match event {
+                    TextInputEvent::Changed(_) => this.search_find(true, window, cx),
+                    TextInputEvent::Submitted(_) => this.search_find(true, window, cx),
+                    TextInputEvent::Cancelled => this.close_find(window, cx),
+                },
+            );
+            self.subscriptions.push(subscription);
+            self.find_input = Some(input);
+        }
+        if let Some(input) = self.find_input.clone() {
+            input.update(cx, |input, cx| input.focus_and_select_all(window, cx));
+        }
+        if let Err(error) = browser_platform::focus_chrome(window) {
+            tracing::warn!(%error, "could not focus the find bar");
+        }
+        self.search_find(true, window, cx);
+        cx.notify();
+    }
+
+    pub fn close_find(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.find_open {
+            return;
+        }
+        self.find_open = false;
+        if let Some(engine) = self.active_engine() {
+            engine.focus_page();
+        }
+        cx.notify();
+    }
+
+    fn find_query(&self, cx: &App) -> Option<String> {
+        let input = self.find_input.as_ref()?;
+        let text = input.read(cx).text().trim().to_owned();
+        (!text.is_empty()).then_some(text)
+    }
+
+    fn search_find(&mut self, forward: bool, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(query) = self.find_query(cx) else {
+            self.find_result = None;
+            cx.notify();
+            return;
+        };
+        if let Some(engine) = self.active_engine() {
+            engine.find_in_page(&query, forward);
+            self.find_result = None;
+            cx.notify();
+        }
+    }
+
+    fn handle_find_result(&mut self, found: bool, cx: &mut Context<Self>) {
+        self.find_result = Some(found);
+        cx.notify();
+    }
+
+    pub fn find_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.find_open {
+            self.open_find(window, cx);
+            return;
+        }
+        self.search_find(true, window, cx);
+    }
+
+    pub fn find_previous(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.find_open {
+            self.open_find(window, cx);
+            return;
+        }
+        self.search_find(false, window, cx);
+    }
+
+    /// Probe helper: run a find for `query` and focus the find bar.
+    pub fn find_in_page_for_probe(
+        &mut self,
+        query: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_find(window, cx);
+        let query = query.to_owned();
+        if let Some(input) = self.find_input.clone() {
+            input.update(cx, |input, cx| input.set_text(query, cx));
+        }
+        self.search_find(true, window, cx);
+    }
+
+    pub fn find_state(&self) -> (bool, Option<bool>) {
+        (self.find_open, self.find_result)
     }
 
     fn record_history(&self, url: &str, title: &str, cx: &Context<Self>) {
@@ -1037,6 +1238,34 @@ impl BrowserWindow {
         cx.notify();
     }
 
+    /// Clears cookies, caches and site storage across every tab's data store.
+    /// Copies the active page URL to the clipboard.
+    pub fn copy_url(&mut self, cx: &mut Context<Self>) {
+        let Some(url) = self
+            .tabs
+            .active_tab()
+            .map(|tab| tab.navigation.url.clone())
+            .filter(|url| !url.is_empty())
+        else {
+            return;
+        };
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(url));
+        self.status = Some("URL copied".into());
+        cx.notify();
+    }
+
+    pub fn clear_browsing_data(&mut self, cx: &mut Context<Self>) {
+        let engines: Vec<Rc<dyn Engine>> = self.runtimes.values().cloned().collect();
+        if engines.is_empty() {
+            return;
+        }
+        self.status = Some("Clearing browsing data…".into());
+        for engine in engines {
+            engine.clear_browsing_data();
+        }
+        cx.notify();
+    }
+
     pub fn clear_history(&mut self, cx: &mut Context<Self>) {
         let Some(history) = self.history.clone() else {
             return;
@@ -1063,6 +1292,8 @@ impl BrowserWindow {
         match self.overlay {
             Overlay::None => "none",
             Overlay::History => "history",
+            Overlay::Bookmarks => "bookmarks",
+            Overlay::Downloads => "downloads",
         }
     }
 
@@ -1097,6 +1328,10 @@ impl BrowserWindow {
                     self.close_overlay(window, cx);
                     return;
                 }
+                if self.find_open {
+                    self.close_find(window, cx);
+                    return;
+                }
                 if let Some(engine) = self.active_engine() {
                     engine.stop();
                 }
@@ -1110,10 +1345,9 @@ impl BrowserWindow {
             BrowserShortcut::ReopenClosedTab => self.reopen_closed_tab(window, cx),
             BrowserShortcut::NextTab => self.cycle_tab(true, window, cx),
             BrowserShortcut::PreviousTab => self.cycle_tab(false, window, cx),
-            BrowserShortcut::FindInPage => {
-                self.status = Some("Find in page arrives with the essentials milestone".into());
-                cx.notify();
-            }
+            BrowserShortcut::FindInPage => self.open_find(window, cx),
+            BrowserShortcut::FindNext => self.find_next(window, cx),
+            BrowserShortcut::FindPrevious => self.find_previous(window, cx),
             BrowserShortcut::ZoomIn => self.zoom(0.1, cx),
             BrowserShortcut::ZoomOut => self.zoom(-0.1, cx),
             BrowserShortcut::ZoomReset => self.reset_zoom(cx),
@@ -1121,6 +1355,10 @@ impl BrowserWindow {
                 self.status = Some("Settings arrive with the modern-experience milestone".into());
                 cx.notify();
             }
+            BrowserShortcut::ToggleBookmark => self.toggle_bookmark(window, cx),
+            BrowserShortcut::ToggleBookmarks => self.toggle_bookmarks(window, cx),
+            BrowserShortcut::ToggleDownloads => self.toggle_downloads(window, cx),
+            BrowserShortcut::CopyUrl => self.copy_url(cx),
             BrowserShortcut::Quit => cx.quit(),
         }
     }
@@ -1165,6 +1403,37 @@ impl BrowserWindow {
         self.toggle_history(window, cx);
     }
 
+    fn on_toggle_bookmark(
+        &mut self,
+        _: &ToggleBookmark,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_bookmark(window, cx);
+    }
+
+    fn on_toggle_bookmarks(
+        &mut self,
+        _: &ToggleBookmarks,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_bookmarks(window, cx);
+    }
+
+    fn on_copy_url(&mut self, _: &CopyUrl, _window: &mut Window, cx: &mut Context<Self>) {
+        self.copy_url(cx);
+    }
+
+    fn on_toggle_downloads(
+        &mut self,
+        _: &ToggleDownloads,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_downloads(window, cx);
+    }
+
     fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
         self.new_tab(window, cx);
     }
@@ -1206,9 +1475,16 @@ impl BrowserWindow {
         self.reset_zoom(cx);
     }
 
-    fn on_find_in_page(&mut self, _: &FindInPage, _window: &mut Window, cx: &mut Context<Self>) {
-        self.status = Some("Find in page arrives with the essentials milestone".into());
-        cx.notify();
+    fn on_find_in_page(&mut self, _: &FindInPage, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_find(window, cx);
+    }
+
+    fn on_find_next(&mut self, _: &FindNext, window: &mut Window, cx: &mut Context<Self>) {
+        self.find_next(window, cx);
+    }
+
+    fn on_find_previous(&mut self, _: &FindPrevious, window: &mut Window, cx: &mut Context<Self>) {
+        self.find_previous(window, cx);
     }
 
     fn on_open_settings(&mut self, _: &OpenSettings, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1226,6 +1502,8 @@ impl BrowserWindow {
 enum Overlay {
     None,
     History,
+    Bookmarks,
+    Downloads,
 }
 
 /// Observable browser state used by automated end-to-end probes.
@@ -1243,6 +1521,19 @@ pub struct BrowserSnapshot {
     pub history_urls: Vec<String>,
     pub history_ids: Vec<i64>,
     pub history_loading: bool,
+    pub bookmarks_count: usize,
+    pub bookmark_urls: Vec<String>,
+    pub bookmark_folders: Vec<String>,
+    pub bookmark_folder_ids: Vec<i64>,
+    pub bookmark_ids: Vec<i64>,
+    pub bookmark_folder_of: Vec<Option<i64>>,
+    pub bookmarked_active: bool,
+    pub find_open: bool,
+    pub find_found: Option<bool>,
+    pub downloads_count: usize,
+    pub download_paths: Vec<String>,
+    pub download_statuses: Vec<String>,
+    pub downloads_completed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

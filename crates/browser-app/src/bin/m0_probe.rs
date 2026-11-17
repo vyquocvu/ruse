@@ -68,6 +68,7 @@ fn main() {
                     viewport: Viewport::new(0.0, CHROME_HEIGHT as f64, 0.0, 0.0),
                     initial_url: None,
                     private: false,
+                    downloads_dir: std::env::temp_dir(),
                 }) {
                     Ok(instance) => instance,
                     Err(error) => {
@@ -565,6 +566,7 @@ async fn run_probe(
         viewport: Viewport::new(470.0, CHROME_HEIGHT as f64, 420.0, 520.0),
         initial_url: Some(page_two_url.clone()),
         private: false,
+        downloads_dir: std::env::temp_dir(),
     })
     .map_err(|error| error.to_string())?;
     let (second_engine, second_events) = second_instance.into_parts();

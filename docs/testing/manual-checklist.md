@@ -47,6 +47,18 @@ by `scripts/m0-probe.sh`.
 - [ ] Session restores after quit/relaunch.
 - [ ] A crashed web process shows a recoverable error, not a browser crash.
 
+## Essentials
+
+- [ ] *auto* History records visits and supports delete/clear (m3-probe).
+- [ ] *auto* Bookmarks add/remove/folders persist (m3-probe).
+- [ ] *auto* Find in page reports match/no-match (m3-probe).
+- [ ] *auto* A download is saved and listed, contents intact (m3-probe).
+- [ ] *auto* Clear site data removes cookies and localStorage (m3-probe).
+- [ ] Reveal a download in Finder and open it with the default app.
+- [ ] Cancelling an in-flight download (large remote file) stops it.
+- [ ] History and bookmark pages scroll smoothly with hundreds of rows.
+- [ ] Find bar shrinks the page without visual glitches; Esc returns focus.
+
 ## Privacy (when implemented)
 
 - [ ] Private window uses ephemeral storage (cookies gone after close).

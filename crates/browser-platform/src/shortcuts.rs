@@ -26,6 +26,12 @@ pub enum BrowserShortcut {
     ZoomOut,
     ZoomReset,
     OpenSettings,
+    ToggleBookmark,
+    ToggleBookmarks,
+    FindNext,
+    FindPrevious,
+    ToggleDownloads,
+    CopyUrl,
     Quit,
 }
 

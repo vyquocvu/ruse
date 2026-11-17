@@ -9,8 +9,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use browser_core::SessionSnapshot;
+pub mod bookmarks;
 pub mod history;
 
+pub use bookmarks::BookmarkStore;
 pub use history::HistoryStore;
 
 use thiserror::Error;

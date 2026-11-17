@@ -1,7 +1,10 @@
 [package]
 name = "browser-security"
+description = "Navigation policy, download validation and privacy decisions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+url.workspace = true
+thiserror.workspace = true

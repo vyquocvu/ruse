@@ -71,13 +71,25 @@ pub enum EngineEvent {
     NewWindowRequested { url: String },
     /// A navigation to a non-web scheme that must be handled by the OS.
     ExternalSchemeRequested { url: String },
-    /// The page attempted to start a download.
-    DownloadRequested {
+    /// A download started and a destination file was chosen.
+    DownloadStarted {
         url: String,
-        suggested_filename: Option<String>,
+        filename: String,
+        path: PathBuf,
+        expected_bytes: i64,
+    },
+    /// Website data (cookies, caches, storage) was cleared.
+    BrowsingDataCleared,
+    /// A download finished or failed.
+    DownloadFinished {
+        path: PathBuf,
+        success: bool,
+        message: Option<String>,
     },
     /// The web content process crashed or was killed by the system.
     ProcessTerminated,
+    /// Result of a find-in-page request.
+    FindResult { found: bool },
     /// Result of [`crate::Engine::evaluate_script_json`].
     ScriptResult { id: u64, value: serde_json::Value },
     /// Failure of [`crate::Engine::evaluate_script_json`].

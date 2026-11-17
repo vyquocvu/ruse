@@ -1,6 +1,6 @@
 //! `WKWebView`-backed implementation of [`Engine`].
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,9 +12,10 @@ use objc2::{ClassType, MainThreadMarker, MainThreadOnly, msg_send};
 use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSImage, NSView,
 };
-use objc2_foundation::{NSDictionary, NSError, NSString};
+use objc2_foundation::{NSDate, NSDictionary, NSError, NSString};
 use objc2_web_kit::{
-    WKSnapshotConfiguration, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKFindConfiguration, WKFindResult, WKSnapshotConfiguration, WKWebView, WKWebViewConfiguration,
+    WKWebsiteDataStore,
 };
 
 use crate::engine::{Engine, EngineInstance, EngineOptions};
@@ -25,7 +26,7 @@ use super::convert::{
     main_thread_marker, ns_error_message, ns_string, parse_load_url, viewport_to_frame,
     webview_title, webview_url,
 };
-use super::delegates::{EventSink, NavigationDelegate, UiDelegate};
+use super::delegates::{DownloadDelegate, EventSink, NavigationDelegate, UiDelegate};
 
 /// A `WKWebView` driven by the browser.
 pub(super) struct WkEngine {
@@ -36,6 +37,8 @@ pub(super) struct WkEngine {
     /// subview of it.
     parent_view: Retained<NSView>,
     sink: Rc<EventSink>,
+    /// Keeps download delegates alive for the life of the web view.
+    downloads: Rc<RefCell<Vec<Retained<DownloadDelegate>>>>,
     viewport: Cell<Viewport>,
     visible: Cell<bool>,
     closed: Cell<bool>,
@@ -75,7 +78,14 @@ impl WkEngine {
             WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), frame, &configuration)
         };
 
-        let navigation_delegate = NavigationDelegate::new(mtm, sink.clone());
+        let downloads: Rc<RefCell<Vec<Retained<DownloadDelegate>>>> =
+            Rc::new(RefCell::new(Vec::new()));
+        let navigation_delegate = NavigationDelegate::new(
+            mtm,
+            sink.clone(),
+            options.downloads_dir.clone(),
+            downloads.clone(),
+        );
         let ui_delegate = UiDelegate::new(mtm, sink.clone());
         // SAFETY: delegates are retained by this struct and outlive the web view.
         unsafe {
@@ -92,6 +102,7 @@ impl WkEngine {
             ui_delegate,
             parent_view,
             sink,
+            downloads,
             viewport: Cell::new(options.viewport),
             visible: Cell::new(true),
             closed: Cell::new(false),
@@ -173,6 +184,39 @@ impl Engine for WkEngine {
         unsafe {
             self.webview.stopLoading();
         }
+    }
+
+    fn clear_browsing_data(&self) {
+        let Ok(mtm) = main_thread_marker() else {
+            return;
+        };
+        let configuration = unsafe { self.webview.configuration() };
+        let store = unsafe { configuration.websiteDataStore() };
+        let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
+        let sink = self.sink.clone();
+        let completion = RcBlock::new(move || {
+            sink.send(EngineEvent::BrowsingDataCleared);
+        });
+        // SAFETY: main-thread WebKit call; removing all types since the distant
+        // past clears caches, cookies and site storage for this data store.
+        unsafe {
+            store.removeDataOfTypes_modifiedSince_completionHandler(
+                &types,
+                &NSDate::distantPast(),
+                &completion,
+            );
+        }
+    }
+
+    fn cancel_download(&self, path: &std::path::Path) -> bool {
+        let downloads = self.downloads.borrow();
+        for delegate in downloads.iter() {
+            if delegate.destination().as_deref() == Some(path) {
+                delegate.cancel();
+                return true;
+            }
+        }
+        false
     }
 
     fn evaluate_script(&self, script: &str) {
@@ -279,6 +323,37 @@ impl Engine for WkEngine {
         let window = self.webview.window();
         if let Some(window) = window {
             window.makeFirstResponder(Some(&self.webview));
+        }
+    }
+
+    fn find_in_page(&self, query: &str, forward: bool) {
+        let Ok(mtm) = main_thread_marker() else {
+            return;
+        };
+        if query.is_empty() || self.closed.get() {
+            return;
+        }
+        let configuration = unsafe { WKFindConfiguration::new(mtm) };
+        unsafe {
+            configuration.setBackwards(!forward);
+            configuration.setCaseSensitive(false);
+            configuration.setWraps(true);
+        }
+        let sink = self.sink.clone();
+        let completion = RcBlock::new(move |result: std::ptr::NonNull<WKFindResult>| {
+            // SAFETY: WebKit passes a non-null WKFindResult.
+            let found = unsafe { result.as_ref().matchFound() };
+            sink.send(EngineEvent::FindResult { found });
+        });
+        let query = ns_string(query);
+        // SAFETY: main-thread WebKit call with a valid configuration and
+        // retained completion block.
+        unsafe {
+            self.webview.findString_withConfiguration_completionHandler(
+                &query,
+                Some(&configuration),
+                &completion,
+            );
         }
     }
 

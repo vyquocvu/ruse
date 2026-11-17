@@ -10,8 +10,8 @@ and validated today.
 
 ## Status
 
-Milestones **M0 (engine feasibility)**, **M1 (browser foundation)** and
-**M2 (tabs and sessions)** are complete:
+Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
+**M2 (tabs and sessions)** and **M3 (browser essentials)** are complete:
 
 - Real native window with GPUI chrome: tab strip, toolbar, address bar, loading
   indicator, error page and a GPUI new-tab page.
@@ -26,10 +26,12 @@ Milestones **M0 (engine feasibility)**, **M1 (browser foundation)** and
 - Favicons discovered from page hints and fetched off the UI thread.
 - Session persistence with atomic writes and restore; background tabs are
   lazy-loaded on activation.
-- Verified evidence: `docs/milestones/M0.md`, `M1.md`, `M2.md`.
+- History (SQLite + GPUI page), bookmarks with folders, downloads manager,
+  find-in-page, clear site data, copy URL and zoom.
+- Verified evidence: `docs/milestones/M0.md` … `M3.md`.
 
-History, bookmarks, downloads, settings UI and private browsing are next — see
-`ROADMAP.md`.
+Themes, settings UI, bookmark bar/sidebar, command palette and private browsing
+are next — see `ROADMAP.md`.
 
 ## Requirements
 
@@ -54,7 +56,8 @@ builds also work in restricted environments.
 ./scripts/m0-probe.sh        # engine embedding: HTTPS, JS, CSS, resize, 2 views
 ./scripts/m1-probe.sh        # browser window: tabs, navigation, typing, favicon
 ./scripts/m2-probe.sh        # session persistence across two processes
-cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json
+./scripts/m3-probe.sh        # history, bookmarks, find, downloads, clear data
+cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json target/m3-report.json
 ```
 
 The M0 probe writes a page snapshot to `target/m0-snapshot.png`. The M1 probe
@@ -71,6 +74,12 @@ drives the real browser window with synthetic AppKit key events.
 | ⌘T / ⌘W | New tab / close tab |
 | ⇧⌘T | Reopen closed tab |
 | ⇧⌘D | Duplicate tab |
+| ⌘Y | History |
+| ⇧⌘B | Bookmarks |
+| ⇧⌘J | Downloads |
+| ⌘F / ⌘G / ⇧⌘G | Find / next / previous |
+| ⌘D | Bookmark current page |
+| ⇧⌘C | Copy current URL |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset |
 | ⌘Q | Quit |
@@ -96,6 +105,7 @@ drives the real browser window with synthetic AppKit key events.
 - `docs/milestones/M0.md` — feasibility report
 - `docs/milestones/M1.md` — browser foundation report
 - `docs/milestones/M2.md` — tabs and sessions report
+- `docs/milestones/M3.md` — browser essentials report
 
 ## Known limitations
 

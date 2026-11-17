@@ -43,22 +43,26 @@ relaunch, verify order/active/lazy load); `m1-probe` favicon check.
   automatically triggerable through public APIs).
 - History within a restored tab is not persisted (fresh engine history).
 
-## M3 — Browser essentials (in progress)
+## M3 — Browser essentials — **done** (two items deferred)
+
+Evidence: `docs/milestones/M3.md`; `m3-probe` (history, bookmarks/folders,
+find-in-page, downloads, clear site data).
 
 | Task | Status | Acceptance |
 | --- | --- | --- |
-| M3.1 History: SQLite recording + GPUI history page + delete/clear | done | `m3-probe`: visits recorded, page lists them, delete/clear persist across reload |
-| M3.2 Bookmarks + folders + manager page | next | add/remove current page, folders, open/delete entries; persisted |
-| M3.3 Downloads (WKDownload, destination, progress, cancel) | next | fixture `/download` saves a file and appears in the list |
-| M3.4 Find in page | next | Cmd+F finds text via WKWebView, next/previous, Esc closes |
-| M3.5 Cookie management + clear browsing data (cache/storage) | next | clear actions remove WebKit records; private data policy documented |
-| M3.6 Permissions prompts (camera/mic) via WKUIDelegate | next | prompt UI shown, denial/grant honored, decision remembered per origin |
-| M3.7 Context menus | next | page context menu is native WebKit; chrome right-click actions for tabs/bookmarks |
+| M3.1 History: SQLite recording + GPUI history page + delete/clear | done | verified by `m3-probe` across reloads |
+| M3.2 Bookmarks + folders + manager page | done | add/remove, folders, move, delete; reload-verified |
+| M3.3 Downloads (WKDownload, destination, progress, cancel) | done | fixture `/download` saved and listed; filename policy tested |
+| M3.4 Find in page | done | match/no-match and close verified via native find |
+| M3.5 Clear browsing data (cookies, caches, storage) | done | cookie + localStorage fixture cleared and re-verified |
+| M3.6 Permission prompts (camera/mic) | deferred to M5 | requires parking WebKit decision blocks across a GPUI dialog; currently deny-by-default |
+| M3.7 Chrome context menus / open link in new tab from page menu | deferred to M4 | page context menu is WebKit's native one today |
+| M3.8 Copy URL, zoom controls | done | Cmd+Shift+C, Cmd+=/-/0 |
 
-History search in the UI, bookmark bar and download progress UI are refinements
-that can land in M4 if they are not essential to the acceptance tests.
+Remaining M3 refinements (history search UI, download resume, per-site cookie
+manager) are tracked under M4/M5.
 
-## M4 — Modern experience
+## M4 — Modern experience (next)
 
 - Light/dark themes with OS appearance; customizable toolbar; sidebar.
 - Pinned tabs, tab grouping, command palette, quick search.

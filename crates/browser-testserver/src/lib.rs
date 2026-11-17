@@ -165,6 +165,12 @@ fn route(path: &str) -> (&'static str, &'static str, Vec<u8>, &'static str) {
         // implicit fallback.
         "/icon" => ("200 OK", "image/png", ICON_PNG.to_vec(), ""),
         "/favicon.ico" => ("404 Not Found", "text/plain", b"no icon".to_vec(), ""),
+        "/storage" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            STORAGE_PAGE.as_bytes().to_vec(),
+            "",
+        ),
         "/favicon-test" => (
             "200 OK",
             "text/html; charset=utf-8",
@@ -211,6 +217,21 @@ const FAVICON_PAGE: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Favicon Fixture</title>
 <link rel="icon" href="/icon">
 </head><body><h1>favicon</h1></body></html>"#;
+
+const STORAGE_PAGE: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>storage-pending</title></head>
+<body><h1>storage</h1>
+<script>
+if (location.search.indexOf('set=1') !== -1) {
+  document.cookie = 'k=v; path=/';
+  try { localStorage.setItem('k', 'v'); } catch (error) {}
+}
+var cookieSet = document.cookie.indexOf('k=v') !== -1;
+var storageSet = false;
+try { storageSet = localStorage.getItem('k') === 'v'; } catch (error) {}
+document.title = 'storage-' + (cookieSet ? 'set' : 'clear') + '-' + (storageSet ? 'set' : 'clear');
+</script>
+</body></html>"#;
 
 const KEYBOARD: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Keyboard Fixture</title></head>

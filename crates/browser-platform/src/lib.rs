@@ -61,6 +61,46 @@ pub fn focus_chrome(window: &gpui::Window) -> Result<(), PlatformError> {
     }
 }
 
+/// Directory where the browser saves downloads.
+///
+/// `GPUI_BROWSER_DOWNLOADS_DIR` overrides `~/Downloads` for tests and power
+/// users.
+pub fn downloads_directory() -> std::path::PathBuf {
+    if let Some(directory) = std::env::var_os("GPUI_BROWSER_DOWNLOADS_DIR") {
+        return std::path::PathBuf::from(directory);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return std::path::PathBuf::from(home).join("Downloads");
+    }
+    std::env::temp_dir().join("gpui-browser-downloads")
+}
+
+/// Opens a local file with the default application.
+pub fn open_path(path: &std::path::Path) -> Result<(), PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::open_path(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Err(PlatformError::NotAppKit)
+    }
+}
+
+/// Reveals a local file in Finder.
+pub fn reveal_path(path: &std::path::Path) -> Result<(), PlatformError> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::reveal_path(path)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        Err(PlatformError::NotAppKit)
+    }
+}
+
 /// Hands a URL to the operating system (mail client, other apps).
 pub fn open_external_url(url: &str) -> Result<(), PlatformError> {
     #[cfg(target_os = "macos")]

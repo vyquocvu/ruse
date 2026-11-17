@@ -65,6 +65,32 @@ pub(crate) fn focus_content_view(window: &gpui::Window) -> Result<(), PlatformEr
     }
 }
 
+fn file_url(path: &std::path::Path) -> Retained<NSURL> {
+    NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()))
+}
+
+pub(crate) fn open_path(path: &std::path::Path) -> Result<(), PlatformError> {
+    if MainThreadMarker::new().is_none() {
+        return Err(PlatformError::NotMainThread);
+    }
+    let url = file_url(path);
+    if NSWorkspace::sharedWorkspace().openURL(&url) {
+        Ok(())
+    } else {
+        Err(PlatformError::OpenUrl(path.display().to_string()))
+    }
+}
+
+pub(crate) fn reveal_path(path: &std::path::Path) -> Result<(), PlatformError> {
+    if MainThreadMarker::new().is_none() {
+        return Err(PlatformError::NotMainThread);
+    }
+    let url = file_url(path);
+    let urls = objc2_foundation::NSArray::arrayWithObject(&*url);
+    NSWorkspace::sharedWorkspace().activateFileViewerSelectingURLs(&urls);
+    Ok(())
+}
+
 pub(crate) fn open_external_url(url: &str) -> Result<(), PlatformError> {
     if MainThreadMarker::new().is_none() {
         return Err(PlatformError::NotMainThread);
@@ -112,7 +138,13 @@ fn shortcut_for(event: &NSEvent) -> Option<BrowserShortcut> {
         17 if shift => BrowserShortcut::ReopenClosedTab,
         17 => BrowserShortcut::NewTab,
         13 => BrowserShortcut::CloseTab,
+        2 => BrowserShortcut::ToggleBookmark,
+        11 if shift => BrowserShortcut::ToggleBookmarks,
         3 => BrowserShortcut::FindInPage,
+        38 if shift => BrowserShortcut::ToggleDownloads,
+        8 if shift => BrowserShortcut::CopyUrl,
+        5 if shift => BrowserShortcut::FindPrevious,
+        5 => BrowserShortcut::FindNext,
         24 if shift => BrowserShortcut::ZoomIn,
         27 => BrowserShortcut::ZoomOut,
         29 => BrowserShortcut::ZoomReset,

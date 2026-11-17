@@ -161,9 +161,16 @@ is a pure `browser-core` model, writes are serialised through one background
 writer task, and restore clamps/tranks the file defensively. Private sessions
 must never write here (M5).
 
-History, bookmarks and settings will live in SQLite in the same directory when
-M3 lands; the session file stays JSON because it is small, human-inspectable and
-read once at startup.
+History and bookmarks live in `browser.sqlite3` in the same directory
+(`history`, `bookmarks`, `bookmark_folders` tables). Both stores open a
+connection per call, so they are `Send + Sync` and safe on the background
+executor. The session stays JSON because it is small, human-inspectable and read
+once at startup.
+
+Downloads are performed by WebKit (`WKDownload`); the engine chooses a
+sanitised destination inside the downloads directory and emits start/finish
+events. The UI samples file size for progress (ADR-0006). Clearing browsing
+data removes all `WKWebsiteDataStore` types since the distant past.
 
 ## Favicons
 
@@ -180,6 +187,15 @@ macOS is implemented and tested. `browser-engine` returns
 WebView2 (Windows) or WebKitGTK (Linux) adapter. Do not add cross-platform
 abstractions that are not backed by a working adapter.
 
+## Full-window surfaces
+
+History, bookmarks and downloads are GPUI pages rendered in the content area
+while the native web view is hidden (ADR-0003). They share the overlay pattern:
+an `Overlay` enum on the window, page-should-show = no overlay, and a
+GPUI-focused surface so keyboard events reach the chrome. Escape closes the
+overlay; the find bar is different: it is part of the chrome and shrinks the page
+viewport instead of covering it.
+
 ## Known limitations (also see ADR-0002 / ADR-0003)
 
 - GPUI overlays cannot render above the web view.
@@ -193,3 +209,5 @@ abstractions that are not backed by a working adapter.
   `/favicon.ico` (ADR-0005). SVG-only icons are not decoded.
 - Restored tabs do not restore WebKit's back/forward history; they load the URL
   fresh.
+- Downloads have no WebKit progress callback (sampled from the file) and no
+  resume; media capture prompts are deny-by-default until M5.

@@ -3,6 +3,7 @@
 //! This crate is pure state and policy: no GPUI, no AppKit, no WebKit. It is
 //! unit-testable without a window and owns the rules the UI follows.
 
+pub mod bookmarks;
 pub mod history;
 pub mod navigation;
 pub mod search;
@@ -11,6 +12,7 @@ pub mod settings;
 pub mod tab;
 pub mod url_input;
 
+pub use bookmarks::{Bookmark, BookmarkFolder};
 pub use history::{HistoryEntry, relative_time, unix_millis_now};
 pub use navigation::{LoadStatus, NavigationEvent, NavigationState};
 pub use search::SearchEngine;

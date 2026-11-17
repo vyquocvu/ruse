@@ -122,6 +122,76 @@ impl BrowserWindow {
             ))
     }
 
+    fn render_find_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let input = self.find_input.clone();
+        let status = match self.find_result {
+            Some(true) => Some(("Match found", theme.text_muted)),
+            Some(false) => Some(("No matches", theme.danger)),
+            None => None,
+        };
+        let input_element: AnyElement = match input {
+            Some(input) => div()
+                .flex_1()
+                .max_w(px(320.0))
+                .h(px(26.0))
+                .rounded_md()
+                .bg(theme.address_background)
+                .border_1()
+                .border_color(theme.border)
+                .overflow_hidden()
+                .child(input)
+                .into_any_element(),
+            None => div().flex_1().into_any_element(),
+        };
+        div()
+            .h(px(36.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .bg(theme.chrome)
+            .border_b_1()
+            .border_color(theme.border)
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme.text_muted)
+                    .child("Find"),
+            )
+            .child(input_element)
+            .children(status.map(|(text, color)| {
+                div()
+                    .text_size(px(11.0))
+                    .text_color(color)
+                    .child(text)
+                    .into_any_element()
+            }))
+            .child(div().flex_1())
+            .child(icon_button(
+                theme,
+                "find-previous",
+                "↑",
+                true,
+                cx.listener(|this, _event, window, cx| this.find_previous(window, cx)),
+            ))
+            .child(icon_button(
+                theme,
+                "find-next",
+                "↓",
+                true,
+                cx.listener(|this, _event, window, cx| this.find_next(window, cx)),
+            ))
+            .child(icon_button(
+                theme,
+                "find-close",
+                "✕",
+                true,
+                cx.listener(|this, _event, window, cx| this.close_find(window, cx)),
+            ))
+            .into_any_element()
+    }
+
     fn render_history(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let now = unix_millis_now();
         let entries = self.history_entries.clone();
@@ -156,6 +226,12 @@ impl BrowserWindow {
                     }),
             )
             .child(div().flex_1())
+            .child(text_button(
+                theme,
+                "clear-site-data",
+                "Clear site data",
+                cx.listener(|this, _event, _window, cx| this.clear_browsing_data(cx)),
+            ))
             .child(text_button(
                 theme,
                 "clear-history",
@@ -315,6 +391,10 @@ impl BrowserWindow {
             .tabs
             .active_tab()
             .is_some_and(|tab| !tab.navigation.url.is_empty());
+        let bookmarked = self
+            .tabs
+            .active_tab()
+            .is_some_and(|tab| self.bookmarks.is_bookmarked(&tab.navigation.url));
         let address_focused = self.address.read(cx).is_focused(window);
         let status = self.status.clone();
 
@@ -346,6 +426,27 @@ impl BrowserWindow {
                 if loading { "✕" } else { "↻" },
                 has_page,
                 cx.listener(|this, _event, _window, cx| this.reload_or_stop(cx)),
+            ))
+            .child(icon_button(
+                theme,
+                "bookmark",
+                if bookmarked { "★" } else { "☆" },
+                has_page,
+                cx.listener(|this, _event, window, cx| this.toggle_bookmark(window, cx)),
+            ))
+            .child(icon_button(
+                theme,
+                "bookmarks",
+                "▤",
+                true,
+                cx.listener(|this, _event, window, cx| this.toggle_bookmarks(window, cx)),
+            ))
+            .child(icon_button(
+                theme,
+                "downloads",
+                "⇩",
+                true,
+                cx.listener(|this, _event, window, cx| this.toggle_downloads(window, cx)),
             ))
             .child(icon_button(
                 theme,
@@ -396,6 +497,12 @@ impl BrowserWindow {
 
         if self.overlay == Overlay::History {
             return content.child(self.render_history(theme, cx));
+        }
+        if self.overlay == Overlay::Bookmarks {
+            return content.child(self.render_bookmarks_page(theme, cx));
+        }
+        if self.overlay == Overlay::Downloads {
+            return content.child(self.render_downloads_page(theme, cx));
         }
 
         if show_page {
@@ -526,12 +633,20 @@ impl Render for BrowserWindow {
             .on_action(cx.listener(Self::on_zoom_out))
             .on_action(cx.listener(Self::on_zoom_reset))
             .on_action(cx.listener(Self::on_find_in_page))
+            .on_action(cx.listener(Self::on_find_next))
+            .on_action(cx.listener(Self::on_find_previous))
             .on_action(cx.listener(Self::on_open_settings))
             .on_action(cx.listener(Self::on_toggle_history))
+            .on_action(cx.listener(Self::on_toggle_bookmark))
+            .on_action(cx.listener(Self::on_toggle_bookmarks))
+            .on_action(cx.listener(Self::on_toggle_downloads))
+            .on_action(cx.listener(Self::on_copy_url))
             .on_action(cx.listener(Self::on_quit))
             .child(self.render_tab_strip(&theme, cx))
             .child(self.render_toolbar(&theme, window, cx))
             .child(loading_bar(&theme, progress, loading))
+            .children(self.find_open.then(|| self.render_find_bar(&theme, cx)))
             .child(self.render_content(&theme, cx))
+            .children(self.render_folder_prompt(&theme, cx))
     }
 }

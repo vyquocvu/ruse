@@ -70,7 +70,7 @@ HTTPS smoke check, but core tests must be deterministic.
 ./scripts/m0-probe.sh          # engine embedding behavior
 ./scripts/m1-probe.sh          # browser window, tabs, navigation, typing
 ./scripts/m2-probe.sh          # session persistence across a real relaunch
-./scripts/m3-probe.sh          # history recording, page, delete/clear
+./scripts/m3-probe.sh          # history, bookmarks, find, downloads, clear site data
 ```
 
 `scripts/cargo` sets a workspace-local `CARGO_HOME`; use it.

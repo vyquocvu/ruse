@@ -48,6 +48,8 @@ pub struct EngineOptions {
     /// When true the engine uses a non-persistent website data store, so
     /// cookies, caches and local storage are discarded with the session.
     pub private: bool,
+    /// Directory where downloads are written. The browser creates it if needed.
+    pub downloads_dir: PathBuf,
 }
 
 /// Operations the browser can perform on a web page.
@@ -72,6 +74,14 @@ pub trait Engine {
 
     /// Stops the in-flight load.
     fn stop(&self);
+
+    /// Clears cookies, caches and site storage for this engine's data store.
+    ///
+    /// Emits [`EngineEvent::BrowsingDataCleared`] when WebKit finishes.
+    fn clear_browsing_data(&self);
+
+    /// Cancels an in-progress download by its destination path.
+    fn cancel_download(&self, path: &std::path::Path) -> bool;
 
     /// Runs JavaScript in the top frame, discarding the result.
     fn evaluate_script(&self, script: &str);
@@ -108,6 +118,9 @@ pub trait Engine {
     /// Makes the web view the first responder so keyboard input goes to the
     /// page instead of the browser chrome.
     fn focus_page(&self);
+
+    /// Searches the page, moving to the next/previous match.
+    fn find_in_page(&self, query: &str, forward: bool);
 
     /// Captures the rendered page to a PNG file. The result arrives through
     /// [`EngineEvent::SnapshotSaved`] or [`EngineEvent::SnapshotFailed`].
