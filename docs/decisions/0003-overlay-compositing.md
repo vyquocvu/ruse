@@ -28,7 +28,5 @@ inherent to native view embedding and also cited by `gpui-webview`'s docs.
 
 ## Alternatives rejected
 
-- CEF off-screen rendering to a GPUI texture: solves compositing, costs a
-  Chromium runtime and a custom input path (deferred).
 - Hiding the web view for every popover: causes page flicker; use native menus
   or popup windows instead.

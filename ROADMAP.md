@@ -107,5 +107,4 @@ Evidence: `docs/milestones/M6.md`, `docs/testing/performance.md`,
 - Custom user agent per site; reader mode.
 - Session restore with lazy loading.
 - Windows/Linux engine adapters.
-- CEF off-screen renderer as an optional build.
 - PDF viewer / print.

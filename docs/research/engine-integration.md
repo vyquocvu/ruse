@@ -88,27 +88,12 @@ of FFI now and cost control over the delegate callbacks the browser features
 **Verdict: selected.** Prototype verified HTTPS loading, JS execution, CSS,
 resize, two independent views, lifecycle isolation, snapshots.
 
-### 4. `CEF` (Chromium Embedded Framework)
-
-- Only option that gives Chromium-grade web compatibility and off-screen
-  rendering, which would allow GPUI to composite page pixels and overlays
-  uniformly.
-- Costs: ~200 MB+ runtime bundle, multi-process CEF helper apps, C++ build or a
-  third-party Rust wrapper, macOS arm64/Xcode distribution work, and a large
-  increase in build/release complexity. Not prototyped in this round; no
-  maintained Rust wrapper was verified end-to-end on this host.
-- Would be the right answer if Chromium compatibility or full GPU compositing
-  were hard requirements.
-
-**Verdict: rejected for v1, documented as the escape hatch** if WebKit
-compatibility or overlay compositing becomes a blocker.
-
-### 5. WebView2 / WebKitGTK
+### 4. WebView2 / WebKitGTK
 
 - Windows-only / Linux-only respectively. Cannot serve macOS-first validation.
   They remain the natural adapters for the `Engine` trait later.
 
-### 6. WKWebView off-screen rendering
+### 5. WKWebView off-screen rendering
 
 - WKWebView has no supported off-screen/GPU-texture API. `takeSnapshot` is
   asynchronous, viewport-limited and too slow for interactive frames. A
@@ -118,25 +103,25 @@ compatibility or overlay compositing becomes a blocker.
 
 ## Feature matrix (macOS, verified or documented)
 
-| Capability | Direct WKWebView | wry | CEF |
-| --- | --- | --- | --- |
-| Real HTML/CSS/JS | WebKit | WebKit | Chromium |
-| Native view embedding in GPUI | yes (verified) | yes (child webview) | OSR or native child |
-| Keyboard/mouse/IME in page | native | native | native / custom |
-| Multiple independent views | yes (verified) | yes | yes |
-| Navigation events | full delegate | handler subset | full |
-| Title updates | delegate + JS bridge | handler | events |
-| JS execution | `evaluateJavaScript` | yes | yes |
-| Find in page | `findString` | no | yes |
-| Page zoom | `pageZoom` | no dedicated API | yes |
-| Downloads | `decidePolicy` + `WKDownload` | started/completed | full |
-| Popup policy | `createWebView` | partial | full |
-| Permission prompts | `WKUIDelegate` | partial | full |
-| DevTools | `isInspectable` (13.3+) | devtools feature | full |
-| Favicon | no API (page hint/fetch) | no | yes |
-| GPUI overlays above page | no (native subview) | no | with OSR |
-| Process model | per-view WebContent | per-view | multi-process |
-| Bundle cost | OS WebKit | OS WebKit | very large |
+| Capability | Direct WKWebView | wry |
+| --- | --- | --- |
+| Real HTML/CSS/JS | WebKit | WebKit |
+| Native view embedding in GPUI | yes (verified) | yes (child webview) |
+| Keyboard/mouse/IME in page | native | native |
+| Multiple independent views | yes (verified) | yes |
+| Navigation events | full delegate | handler subset |
+| Title updates | delegate + JS bridge | handler |
+| JS execution | `evaluateJavaScript` | yes |
+| Find in page | `findString` | no |
+| Page zoom | `pageZoom` | no dedicated API |
+| Downloads | `decidePolicy` + `WKDownload` | started/completed |
+| Popup policy | `createWebView` | partial |
+| Permission prompts | `WKUIDelegate` | partial |
+| DevTools | `isInspectable` (13.3+) | devtools feature |
+| Favicon | no API (page hint/fetch) | no |
+| GPUI overlays above page | no (native subview) | no |
+| Process model | per-view WebContent | per-view |
+| Bundle cost | OS WebKit | OS WebKit |
 
 ## Risks and mitigations
 

@@ -32,6 +32,4 @@ retained by the engine so teardown order is safe.
 ## Alternatives rejected
 
 - Screenshot/OSR loop with WKWebView: no supported API, too slow, breaks input.
-- CEF off-screen rendering: viable but large bundle + build complexity; kept as
-  an escape hatch (ADR-0002).
 - Building page rendering in GPUI: explicitly out of scope.

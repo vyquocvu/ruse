@@ -6,7 +6,7 @@ Status: accepted (M0)
 
 M0 required a real engine with navigation, JS, CSS, multiple views, input,
 downloads, popups and permissions on macOS. Candidates: WKWebView directly,
-`wry`, `gpui-webview`, CEF, WebView2, WebKitGTK. Details:
+`wry`, `gpui-webview`, WebView2, WebKitGTK. Details:
 `docs/research/engine-integration.md`.
 
 ## Decision
@@ -37,4 +37,3 @@ Implement `browser-engine`'s macOS adapter with `WKWebView` via
 - `wry`: good bootstrap, but its delegates own the behavior we must extend and
   it lacks find/zoom/download-progress control.
 - `gpui-webview`: tied to the `gpui-kit` fork and experimental.
-- CEF: right for Chromium compatibility/OSR, wrong for v1 size and complexity.
