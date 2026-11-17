@@ -1,0 +1,9 @@
+[package]
+name = "browser-testserver"
+description = "Deterministic local HTTP server used by browser integration tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]

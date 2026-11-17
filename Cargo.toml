@@ -1,0 +1,66 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/browser-app",
+    "crates/browser-core",
+    "crates/browser-engine",
+    "crates/browser-platform",
+    "crates/browser-security",
+    "crates/browser-storage",
+    "crates/browser-ui",
+    "crates/browser-testserver",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["GPUI Browser Contributors"]
+repository = "https://github.com/example/gpui-browser"
+
+[workspace.dependencies]
+# Internal crates
+browser-core = { path = "crates/browser-core" }
+browser-engine = { path = "crates/browser-engine" }
+browser-platform = { path = "crates/browser-platform" }
+browser-security = { path = "crates/browser-security" }
+browser-storage = { path = "crates/browser-storage" }
+browser-ui = { path = "crates/browser-ui" }
+browser-testserver = { path = "crates/browser-testserver" }
+
+# UI
+gpui = "0.2.2"
+
+# Platform (macOS)
+objc2 = "0.6.2"
+objc2-foundation = "0.3.2"
+objc2-app-kit = "0.3.2"
+objc2-web-kit = { version = "0.3.2", features = ["std"] }
+block2 = "0.6.2"
+raw-window-handle = "0.6.2"
+
+# Core / storage
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+url = "2"
+async-channel = "2.5"
+futures-lite = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["sync", "rt", "time"] }
+
+# Logging / diagnostics
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
