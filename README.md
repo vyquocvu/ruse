@@ -10,13 +10,22 @@ and validated today.
 
 ## Status
 
-Milestone **M0 (technical feasibility)** is complete. The WKWebView embedding,
-navigation events, JavaScript execution, CSS rendering, resize handling,
-multiple independent web views, snapshots and memory measurement are verified.
-See `docs/milestones/M0.md`.
+Milestones **M0 (engine feasibility)** and **M1 (browser foundation)** are
+complete:
 
-The full browser interface (tabs, address bar, history, bookmarks, settings,
-downloads, privacy) is under active development — see `ROADMAP.md`.
+- Real native window with GPUI chrome: tab strip, toolbar, address bar, loading
+  indicator, error page and a GPUI new-tab page.
+- Real WebKit page rendering with navigation, back/forward, reload/stop,
+  JavaScript, CSS, forms and keyboard input.
+- Tabs (create/close/switch), independent page contexts and history per tab.
+- Address bar accepts URLs or search queries; real typing and Enter are covered
+  by an automated end-to-end probe.
+- Browser shortcuts while the page focused are forwarded by a local NSEvent
+  monitor (manual verification for real key events).
+- Verified evidence: `docs/milestones/M0.md`, `docs/milestones/M1.md`.
+
+History, bookmarks, downloads, settings UI, favicons and private browsing are
+next — see `ROADMAP.md`.
 
 ## Requirements
 
@@ -34,17 +43,31 @@ downloads, privacy) is under active development — see `ROADMAP.md`.
 `scripts/cargo` keeps the Cargo registry in the workspace (`.cargo-home`) so
 builds also work in restricted environments.
 
-## Verify the engine integration
+## Verify the integration
 
 ```sh
-./scripts/cargo build -p browser-app --bin m0-probe
-./scripts/m0-probe.sh
-cat target/m0-report.json
+./scripts/cargo build -p browser-app --bin m0-probe --bin m1-probe
+./scripts/m0-probe.sh        # engine embedding: HTTPS, JS, CSS, resize, 2 views
+./scripts/m1-probe.sh        # browser window: tabs, navigation, typing, errors
+cat target/m0-report.json target/m1-report.json
 ```
 
-The probe opens a real window, loads a real HTTPS site plus deterministic local
-fixtures, checks JavaScript/CSS/resize/multi-view behavior and writes a page
-snapshot to `target/m0-snapshot.png`.
+The M0 probe writes a page snapshot to `target/m0-snapshot.png`. The M1 probe
+drives the real browser window with synthetic AppKit key events.
+
+## Default shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| ⌘L | Focus address bar, select all |
+| ⏎ | Navigate to the typed URL / search |
+| ⌘[ / ⌘] | Back / forward |
+| ⌘R / ⇧⌘R | Reload / reload bypassing cache |
+| ⌘T / ⌘W | New tab / close tab |
+| ⇧⌘T | Reopen closed tab |
+| ⌃Tab / ⌃⇧Tab | Next / previous tab |
+| ⌘= / ⌘- / ⌘0 | Zoom in / out / reset |
+| ⌘Q | Quit |
 
 ## Quality gates
 
@@ -65,13 +88,15 @@ snapshot to `target/m0-snapshot.png`.
 - `docs/research/engine-integration.md` — engine/UI research
 - `docs/decisions/` — ADRs (embedding, engine choice, overlays, tabs)
 - `docs/milestones/M0.md` — feasibility report
+- `docs/milestones/M1.md` — browser foundation report
 
 ## Known limitations
 
 - GPUI cannot draw overlays above the native web view; the UI uses full-page GPUI
   surfaces that hide the page, native AppKit menus, or popup windows (ADR-0003).
-- Browser keyboard shortcuts require an `NSEvent` monitor while WebKit owns
-  focus (implemented in Phase 1).
+- Browser keyboard shortcuts require a local `NSEvent` monitor while WebKit owns
+  focus; the monitor is implemented, but real-key interception is on the manual
+  checklist (`docs/testing/manual-checklist.md`).
 - WebKit is not Chromium: no Chromium-grade site isolation or extension
   compatibility is claimed or implied.
 - Favicons and find-in-page are being built on top of WebKit primitives.

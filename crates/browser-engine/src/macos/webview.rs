@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{msg_send, ClassType, MainThreadMarker, MainThreadOnly};
+use objc2::{ClassType, MainThreadMarker, MainThreadOnly, msg_send};
 use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSImage, NSView,
 };
 use objc2_foundation::{NSDictionary, NSError, NSString};
 use objc2_web_kit::{
-    WKWebView, WKWebViewConfiguration, WKSnapshotConfiguration, WKWebsiteDataStore,
+    WKSnapshotConfiguration, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 
 use crate::engine::{Engine, EngineInstance, EngineOptions};
@@ -43,7 +43,7 @@ pub(super) struct WkEngine {
 }
 
 impl WkEngine {
-    pub(super) fn new(options: EngineOptions) -> Result<EngineInstance, EngineError> {
+    pub(super) fn create(options: EngineOptions) -> Result<EngineInstance, EngineError> {
         let mtm = main_thread_marker()?;
         let parent_ptr = options.parent.as_ptr();
         if parent_ptr.is_null() {
@@ -275,6 +275,13 @@ impl Engine for WkEngine {
         unsafe { self.webview.estimatedProgress() }
     }
 
+    fn focus_page(&self) {
+        let window = self.webview.window();
+        if let Some(window) = window {
+            window.makeFirstResponder(Some(&self.webview));
+        }
+    }
+
     fn take_snapshot(&self, path: PathBuf) {
         let mtm = match main_thread_marker() {
             Ok(mtm) => mtm,
@@ -341,12 +348,7 @@ impl Drop for WkEngine {
     }
 }
 
-fn handle_script_completion(
-    sink: &EventSink,
-    id: u64,
-    value: *mut AnyObject,
-    error: *mut NSError,
-) {
+fn handle_script_completion(sink: &EventSink, id: u64, value: *mut AnyObject, error: *mut NSError) {
     if !error.is_null() {
         // SAFETY: WebKit passes a valid NSError when non-null.
         let message = unsafe { ns_error_message(&*error) };

@@ -99,6 +99,33 @@ Consequences:
 - Web views must be hidden/destroyed before their window closes. The adapter
   removes itself from the superview on `close`/`Drop`.
 
+## Chrome focus and keyboard input
+
+The page is a native first responder. While it has focus, keystrokes never reach
+GPUI. Three mechanisms keep the chrome usable:
+
+1. **Focus handoff** — focusing the address bar (Cmd+L, a click on chrome) calls
+   `browser_platform::focus_chrome`, which makes the GPUI content view the
+   window's first responder. Submitting a URL calls `Engine::focus_page` to hand
+   focus back to WebKit.
+2. **Shortcut monitor** — `browser-platform` installs a local `NSEvent` monitor
+   for key-down events. It recognises browser commands by key code and modifiers,
+   forwards them over an async channel to the window entity, and swallows only
+   the events it handles. Typing, clipboard shortcuts and page shortcuts pass
+   through unchanged. The monitor is removed when the window closes.
+3. **GPUI actions** — when chrome has focus, the same commands are available as
+   GPUI actions bound in `browser-app` (they also serve the toolbar buttons).
+
+The address bar tracks whether the user edited the current buffer. Engine URL
+updates are applied while the field is focused only if it is untouched, so typed
+text is never overwritten mid-edit.
+
+## Settings
+
+`browser-core::BrowserSettings` holds the homepage and search engine template.
+Navigation consults it for address-bar searches; window startup consults it for
+the homepage. Persistence arrives with `browser-storage` in M3.
+
 ## Tab model
 
 One `WKWebView` per tab. WebKit spawns a `WebContent` XPC process per web view
@@ -141,8 +168,8 @@ abstractions that are not backed by a working adapter.
 ## Known limitations (also see ADR-0002 / ADR-0003)
 
 - GPUI overlays cannot render above the web view.
-- Browser keyboard shortcuts do not reach GPUI while the web view is first
-  responder; a local `NSEvent` monitor in `browser-platform` forwards them.
+- Real key interception by the local `NSEvent` monitor is covered by the manual
+  checklist; automated probes synthesise events, which bypass local monitors.
 - WebKit provides process-per-view, not Chromium-grade site isolation; iframes
   from different origins may share a web content process. Do not claim
   otherwise.

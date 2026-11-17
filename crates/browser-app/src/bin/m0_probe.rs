@@ -22,14 +22,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
-use browser_engine::{
-    create_engine, Engine, EngineEvent, EngineOptions, NativeParent, Viewport,
-};
+use browser_engine::{Engine, EngineEvent, EngineOptions, NativeParent, Viewport, create_engine};
 use browser_testserver::TestServer;
 use gpui::{
-    canvas, div, prelude::*, px, size, App, Application, AsyncWindowContext, Bounds, Context,
-    IntoElement, Render, SharedString, TitlebarOptions, Timer, WeakEntity, Window, WindowBounds,
-    WindowOptions,
+    App, Application, AsyncWindowContext, Bounds, Context, IntoElement, Render, SharedString,
+    Timer, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, canvas, div,
+    prelude::*, px, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -88,24 +86,25 @@ fn main() {
                 });
                 let probe_for_task = probe.downgrade();
 
-                window.spawn(cx, async move |cx| {
-                    let outcome = run_probe(
-                        &probe_for_task,
-                        cx,
-                        engine,
-                        events,
-                        parent,
-                        fixture_url,
-                        fixture_origin,
-                        page_two_url,
-                    )
-                    .await;
-                    match outcome {
-                        Ok(report) => exit_with_report(report),
-                        Err(error) => exit_with_report(failure("sequence", error)),
-                    }
-                })
-                .detach();
+                window
+                    .spawn(cx, async move |cx| {
+                        let outcome = run_probe(
+                            &probe_for_task,
+                            cx,
+                            engine,
+                            events,
+                            parent,
+                            fixture_url,
+                            fixture_origin,
+                            page_two_url,
+                        )
+                        .await;
+                        match outcome {
+                            Ok(report) => exit_with_report(report),
+                            Err(error) => exit_with_report(failure("sequence", error)),
+                        }
+                    })
+                    .detach();
 
                 probe
             },
@@ -163,23 +162,25 @@ impl Render for Probe {
                             .child("GPUI Browser · M0 engine feasibility probe"),
                     ),
             )
-            .child(div().flex_1().child(
-                canvas(
-                    move |_bounds, _window, _cx| {},
-                    move |bounds, _state, _window, _cx| {
-                        if multi_view.get() {
-                            return;
-                        }
-                        engine.set_viewport(Viewport::new(
-                            bounds.origin.x.into(),
-                            bounds.origin.y.into(),
-                            bounds.size.width.into(),
-                            bounds.size.height.into(),
-                        ));
-                    },
-                )
-                .size_full(),
-            ))
+            .child(
+                div().flex_1().child(
+                    canvas(
+                        move |_bounds, _window, _cx| {},
+                        move |bounds, _state, _window, _cx| {
+                            if multi_view.get() {
+                                return;
+                            }
+                            engine.set_viewport(Viewport::new(
+                                bounds.origin.x.into(),
+                                bounds.origin.y.into(),
+                                bounds.size.width.into(),
+                                bounds.size.height.into(),
+                            ));
+                        },
+                    )
+                    .size_full(),
+                ),
+            )
     }
 }
 
@@ -242,8 +243,14 @@ fn exit_with_report(report: Report) -> ! {
         .checks
         .iter()
         .map(|(name, check)| match check {
-            Check::Pass(detail) => (name.clone(), serde_json::json!({"ok": true, "detail": detail})),
-            Check::Fail(detail) => (name.clone(), serde_json::json!({"ok": false, "detail": detail})),
+            Check::Pass(detail) => (
+                name.clone(),
+                serde_json::json!({"ok": true, "detail": detail}),
+            ),
+            Check::Fail(detail) => (
+                name.clone(),
+                serde_json::json!({"ok": false, "detail": detail}),
+            ),
         })
         .collect::<serde_json::Map<_, _>>();
     let value = serde_json::json!({
@@ -252,10 +259,10 @@ fn exit_with_report(report: Report) -> ! {
         "details": report.details,
         "pid": std::process::id(),
     });
-    if let Ok(text) = serde_json::to_string_pretty(&value) {
-        if let Err(error) = std::fs::write("target/m0-report.json", text) {
-            eprintln!("[m0] could not write report: {error}");
-        }
+    if let Ok(text) = serde_json::to_string_pretty(&value)
+        && let Err(error) = std::fs::write("target/m0-report.json", text)
+    {
+        eprintln!("[m0] could not write report: {error}");
     }
     println!(
         "[m0] result: {}",
@@ -315,9 +322,12 @@ async fn evaluate(
     timeout: Duration,
 ) -> Option<serde_json::Value> {
     let id = engine.evaluate_script_json(expression);
-    match wait_for(events, report, timeout, |event| {
-        matches!(event, EngineEvent::ScriptResult { id: this, .. } if *this == id)
-    })
+    match wait_for(
+        events,
+        report,
+        timeout,
+        |event| matches!(event, EngineEvent::ScriptResult { id: this, .. } if *this == id),
+    )
     .await
     {
         Some(EngineEvent::ScriptResult { value, .. }) => Some(value),
@@ -356,7 +366,11 @@ async fn run_probe(
     if https_url.starts_with("https://") && https_title.as_deref().is_some_and(|t| !t.is_empty()) {
         report.pass(
             "https_navigation",
-            format!("{} ({})", https_title.clone().unwrap_or_default(), https_url),
+            format!(
+                "{} ({})",
+                https_title.clone().unwrap_or_default(),
+                https_url
+            ),
         );
     } else {
         report.fail(
@@ -380,7 +394,10 @@ async fn run_probe(
             && facts.get("ready").and_then(|v| v.as_str()) == Some("complete")
             && facts.get("hasStyleSheets").and_then(|v| v.as_bool()) == Some(true)
         {
-            report.pass("https_dom", format!("example.com body text {body_len:?} chars"));
+            report.pass(
+                "https_dom",
+                format!("example.com body text {body_len:?} chars"),
+            );
         } else {
             report.fail("https_dom", format!("unexpected DOM facts: {facts}"));
         }
@@ -443,12 +460,21 @@ async fn run_probe(
         );
     }
     if color == Some("rgb(12, 120, 90)") {
-        report.pass("css_application", format!("computed heading color {color:?}"));
+        report.pass(
+            "css_application",
+            format!("computed heading color {color:?}"),
+        );
     } else {
-        report.fail("css_application", format!("computed heading color {color:?}"));
+        report.fail(
+            "css_application",
+            format!("computed heading color {color:?}"),
+        );
     }
     if facts.get("globalAnswer").and_then(|v| v.as_i64()) == Some(42) {
-        report.pass("page_context", "window.__fixture survives in the page context");
+        report.pass(
+            "page_context",
+            "window.__fixture survives in the page context",
+        );
     } else {
         report.fail(
             "page_context",
@@ -549,9 +575,12 @@ async fn run_probe(
         })
         .map_err(|error| error.to_string())?;
 
-    let second_loaded = wait_for(&second_events, &mut report, Duration::from_secs(15), |event| {
-        matches!(event, EngineEvent::LoadFinished { .. })
-    })
+    let second_loaded = wait_for(
+        &second_events,
+        &mut report,
+        Duration::from_secs(15),
+        |event| matches!(event, EngineEvent::LoadFinished { .. }),
+    )
     .await
     .ok_or("timed out waiting for the second web view")?;
     let (second_url, second_title) = match second_loaded {

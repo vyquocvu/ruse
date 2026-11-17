@@ -6,8 +6,8 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -118,6 +118,12 @@ fn route(path: &str) -> (&'static str, &'static str, String, &'static str) {
             "",
         ),
         "/page2" => ("200 OK", "text/html; charset=utf-8", PAGE_TWO.to_owned(), ""),
+        "/keyboard" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            KEYBOARD.to_owned(),
+            "",
+        ),
         "/redirect" => (
             "302 Found",
             "text/plain",
@@ -156,6 +162,21 @@ const INDEX: &str = r#"<!doctype html>
 const PAGE_TWO: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Second Page</title></head>
 <body><h1>page-two</h1><a href="/">back</a></body></html>"#;
+
+const KEYBOARD: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>Keyboard Fixture</title></head>
+<body><h1>keyboard</h1>
+<input id="field" autofocus>
+<p id="count">0</p>
+<script>
+window.__keyCount = 0;
+document.addEventListener('keydown', function () {
+  window.__keyCount += 1;
+  document.getElementById('count').textContent = String(window.__keyCount);
+  document.title = 'key-' + window.__keyCount;
+});
+</script>
+</body></html>"#;
 
 const NOT_FOUND: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Not Found</title></head>

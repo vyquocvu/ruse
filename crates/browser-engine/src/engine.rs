@@ -9,8 +9,8 @@ use std::rc::Rc;
 
 use async_channel::Receiver;
 
-use crate::event::{EngineEvent, Viewport};
 use crate::error::EngineError;
+use crate::event::{EngineEvent, Viewport};
 
 /// A handle to an AppKit `NSView` that will host the native web view.
 ///
@@ -104,6 +104,10 @@ pub trait Engine {
     fn can_go_forward(&self) -> bool;
 
     fn estimated_progress(&self) -> f64;
+
+    /// Makes the web view the first responder so keyboard input goes to the
+    /// page instead of the browser chrome.
+    fn focus_page(&self);
 
     /// Captures the rendered page to a PNG file. The result arrives through
     /// [`EngineEvent::SnapshotSaved`] or [`EngineEvent::SnapshotFailed`].

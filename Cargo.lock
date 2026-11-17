@@ -666,6 +666,7 @@ dependencies = [
  "futures-lite 2.6.1",
  "gpui",
  "raw-window-handle",
+ "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",
@@ -674,6 +675,12 @@ dependencies = [
 [[package]]
 name = "browser-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "url",
+]
 
 [[package]]
 name = "browser-engine"
@@ -693,6 +700,18 @@ dependencies = [
 [[package]]
 name = "browser-platform"
 version = "0.1.0"
+dependencies = [
+ "async-channel 2.5.0",
+ "block2",
+ "browser-engine",
+ "gpui",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "raw-window-handle",
+ "thiserror 2.0.21",
+ "tracing",
+]
 
 [[package]]
 name = "browser-security"
@@ -709,6 +728,12 @@ version = "0.1.0"
 [[package]]
 name = "browser-ui"
 version = "0.1.0"
+dependencies = [
+ "browser-core",
+ "browser-engine",
+ "gpui",
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "bstr"

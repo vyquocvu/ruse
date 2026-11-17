@@ -7,6 +7,8 @@ by `scripts/m0-probe.sh`.
 ## Window and chrome
 
 - [ ] App launches to a native window with a visible tab strip and toolbar.
+- [ ] Traffic-light buttons sit inside the tab strip without overlapping tabs.
+- [ ] Dragging the empty tab-strip area moves the window.
 - [ ] Window can be resized, minimized, zoomed and closed normally.
 - [ ] Chrome follows the system light/dark appearance.
 - [ ] Page content starts exactly below the chrome (no overlap, no gap).
@@ -15,7 +17,7 @@ by `scripts/m0-probe.sh`.
 
 - [ ] *auto* HTTPS site renders (text, images, CSS).
 - [ ] *auto* JavaScript runs (e.g. a page with dynamic content).
-- [ ] Enter in the address bar navigates to typed URLs.
+- [ ] *auto* Enter in the address bar navigates to typed URLs (m1-probe).
 - [ ] Typing a phrase performs a search with the configured engine.
 - [ ] Back and forward buttons work; disabled states are correct.
 - [ ] Reload refreshes the page; stop halts a slow load (`/slow` fixture).
@@ -25,6 +27,7 @@ by `scripts/m0-probe.sh`.
 
 ## Input
 
+- [ ] *auto* Typing reaches page content (m1-probe, keydown fixture).
 - [ ] Clicking a page input and typing works, including non-ASCII/IME.
 - [ ] Trackpad and mouse-wheel scrolling works.
 - [ ] Links and form submissions work.

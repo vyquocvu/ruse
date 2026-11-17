@@ -1,7 +1,12 @@
 [package]
 name = "browser-ui"
+description = "GPUI browser chrome: theme, components, text input, web content host"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+gpui.workspace = true
+browser-core.workspace = true
+browser-engine.workspace = true
+unicode-segmentation = "1"

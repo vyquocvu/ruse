@@ -67,7 +67,8 @@ HTTPS smoke check, but core tests must be deterministic.
 ./scripts/cargo check --workspace
 ./scripts/cargo clippy --workspace --all-targets -- -D warnings
 ./scripts/cargo test --workspace
-./scripts/m0-probe.sh          # when engine or window behavior changed
+./scripts/m0-probe.sh          # engine embedding behavior
+./scripts/m1-probe.sh          # browser window, tabs, navigation, typing
 ```
 
 `scripts/cargo` sets a workspace-local `CARGO_HOME`; use it.

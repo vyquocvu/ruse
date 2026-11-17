@@ -41,7 +41,19 @@ binaries, because WKWebView requires a main-thread AppKit application.
 
 ### Integration / end-to-end tests (`browser-app`, `browser-testserver`)
 
-The `m0-probe` binary is the current E2E harness. It asserts:
+Two probe binaries exist:
+
+- `m0-probe` verifies the engine embedding itself.
+- `m1-probe` drives the real browser window (GPUI chrome + tabs + engine event
+  pumps) and synthesises real AppKit key events, so typing and keyboard focus
+  handoff are exercised end-to-end.
+
+`m1-probe` asserts: startup page, address-bar sync, URL navigation, back and
+forward, new tab + tab navigation, tab close, navigation error surface, recovery,
+address-bar typing + Enter, page keyboard input (fixture retitles itself on
+keydown), resize consistency.
+
+`m0-probe` asserts:
 
 - HTTPS navigation and title extraction (`https://example.com`).
 - Local page: JavaScript execution (inline and external), CSS application,
@@ -52,14 +64,14 @@ The `m0-probe` binary is the current E2E harness. It asserts:
 - Memory: `scripts/m0-probe.sh` samples host RSS and WebKit helper RSS
   separately.
 
-Future slices extend the probe (or add sibling probes) with:
+Future slices extend the probes with:
 
-- tab create/close/switch through actual actions,
-- back/forward/reload/stop round-trips,
-- keyboard shortcut injection via synthesized `NSEvent`s,
+- real `NSEvent` monitor interception (currently the monitor needs a manual
+  check; synthetic events bypass local monitors),
 - history/bookmarks persistence across restarts,
 - private session storage isolation,
-- download flow against `/download`.
+- download flow against `/download`,
+- session restore after a real quit/relaunch.
 
 ### Manual verification (`docs/testing/manual-checklist.md`)
 
@@ -91,6 +103,7 @@ test.
 ./scripts/cargo test --workspace
 ./scripts/cargo clippy --workspace --all-targets -- -D warnings
 ./scripts/m0-probe.sh
+./scripts/m1-probe.sh
 ```
 
 ## Quality gates

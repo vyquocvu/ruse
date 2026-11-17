@@ -1,8 +1,8 @@
 //! Small conversions between Rust values and WebKit/Foundation objects.
 
-use objc2::rc::Retained;
 use objc2::MainThreadMarker;
-use objc2_foundation::{NSRect, NSSize, NSPoint, NSString, NSURL};
+use objc2::rc::Retained;
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSURL};
 use objc2_web_kit::WKWebView;
 
 use crate::error::EngineError;
@@ -57,10 +57,7 @@ pub fn is_cancelled_error(error: &objc2_foundation::NSError) -> bool {
 pub fn viewport_to_frame(viewport: Viewport, parent_height: f64) -> NSRect {
     let y = parent_height - viewport.y - viewport.height;
     NSRect {
-        origin: NSPoint {
-            x: viewport.x,
-            y,
-        },
+        origin: NSPoint { x: viewport.x, y },
         size: NSSize {
             width: viewport.width,
             height: viewport.height,

@@ -11,28 +11,33 @@ ADR.
 
 Evidence: `docs/milestones/M0.md`, `target/m0-report.json`, `m0-probe`.
 
-## M1 — Browser foundation (Phase 1)
+## M1 — Browser foundation (Phase 1) — **done**
 
 Goal: a real browser window a user can navigate with, using GPUI chrome.
 
+Evidence: `docs/milestones/M1.md` and `target/m1-report.json` (15/15 probe
+checks, including real synthetic keyboard input into chrome and page).
+
 | Task | Status | Acceptance |
 | --- | --- | --- |
-| M1.1 `browser-core` URL/search classification + navigation state machine (TDD) | next | unit tests for URL vs query, about:, hosts, failures, loading states |
-| M1.2 `browser-ui` theme + reusable components (button, icon button, address bar shell) | next | components render in window, consistent spacing/colors |
-| M1.3 GPUI single-line text input (focus, typing, selection, paste, IME-safe) | next | typing in address bar works; Enter navigates; Esc reverts |
-| M1.4 Tab strip + navigation toolbar wired to one live tab | next | back/forward/reload/stop act on the web view and track state |
-| M1.5 Address bar ↔ engine navigation, loading progress, title/URL updates | next | title and URL update; progress visible; no flicker while editing |
-| M1.6 Error page for failed navigation | next | failed host shows GPUI error with retry |
-| M1.7 Keyboard shortcuts while page focused (local NSEvent monitor) | next | Cmd+L/T/W/R/[ ]/F work with page focused |
-| M1.8 Homepage + search engine settings model | next | URL bar search uses configured engine |
-| M1.9 M1 verification: probe extension + manual checklist | next | quality gates pass; probe navigates via app actions |
+| M1.1 `browser-core` URL/search classification + navigation state machine (TDD) | done | 31 unit tests: URL vs query, dangerous schemes, hosts, failures, loading states, tabs |
+| M1.2 `browser-ui` theme + reusable components (button, icon button, tabs, loading bar) | done | themed components used by the app chrome |
+| M1.3 GPUI single-line text input (focus, typing, selection, paste, IME) | done | `EntityInputHandler` implementation; automated typing + Enter |
+| M1.4 Tab strip + navigation toolbar wired to live tabs | done | back/forward/reload-stop act on the engine; tabs create/close/switch |
+| M1.5 Address bar ↔ engine navigation, loading progress, title/URL updates | done | title/URL/progress update; user edits never overwritten |
+| M1.6 Error page for failed navigation | done | failed load shows GPUI error with retry; recovery verified |
+| M1.7 Keyboard shortcuts while page focused (local NSEvent monitor) | done (manual check for real key events) | monitor forwards Cmd+L/T/W/R/[/], zoom, tab cycling |
+| M1.8 Homepage + search engine settings model | done | `BrowserSettings` with tested defaults and sanitisation |
+| M1.9 M1 verification: probe extension + manual checklist | done | `scripts/m1-probe.sh`, clippy/tests green |
 
-## M2 — Tabs and sessions
+## M2 — Tabs and sessions (next)
 
-- Create/close/switch/reorder (drag)/duplicate; independent contexts.
-- New tab page (GPUI, hides page view).
-- Tab titles, favicons (fetch/hint), loading indicators, pinned state later.
-- Session persistence + restore; recently closed tabs; crash recovery UX.
+- Reorder tabs by drag; duplicate tab UI affordance.
+- Rich new tab page (GPUI, hides page view) with recent sites/search.
+- Favicons (page hint / fetch) and per-tab loading indicators.
+- Session persistence + restore across restarts; session file format tests.
+- Crash recovery UX for `webViewWebContentProcessDidTerminate` (retry/reload).
+- Pin tabs mentally prepared but UI in M4.
 
 ## M3 — Browser essentials
 

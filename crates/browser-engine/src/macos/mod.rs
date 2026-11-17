@@ -9,7 +9,7 @@ use crate::error::EngineError;
 
 /// Creates a `WKWebView` engine attached to the provided AppKit view.
 pub(super) fn create(options: EngineOptions) -> Result<EngineInstance, EngineError> {
-    webview::WkEngine::new(options)
+    webview::WkEngine::create(options)
 }
 
 /// Whether the current WebKit supports the in-app Web Inspector.

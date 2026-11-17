@@ -1,7 +1,12 @@
 [package]
 name = "browser-core"
+description = "Browser domain models: tabs, navigation, URL handling, sessions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true

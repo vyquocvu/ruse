@@ -1,7 +1,20 @@
 [package]
 name = "browser-platform"
+description = "macOS integration: native view handles, global shortcuts, OS services"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+gpui.workspace = true
+browser-engine.workspace = true
+raw-window-handle.workspace = true
+async-channel.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
+block2.workspace = true

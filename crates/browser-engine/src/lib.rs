@@ -10,9 +10,7 @@ pub mod event;
 #[cfg(target_os = "macos")]
 mod macos;
 
-pub use engine::{
-    create_engine, Engine, EngineInstance, EngineOptions, NativeParent,
-};
+pub use engine::{Engine, EngineInstance, EngineOptions, NativeParent, create_engine};
 pub use error::EngineError;
 pub use event::{EngineEvent, Viewport};
 

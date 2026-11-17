@@ -7,17 +7,19 @@
 use std::rc::Rc;
 
 use objc2::rc::Retained;
-use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
 use objc2_web_kit::{
-    WKFrameInfo, WKMediaCaptureType, WKNavigation, WKNavigationAction,
-    WKNavigationActionPolicy, WKNavigationDelegate, WKPermissionDecision, WKSecurityOrigin,
-    WKUIDelegate, WKWebView, WKWindowFeatures,
+    WKFrameInfo, WKMediaCaptureType, WKNavigation, WKNavigationAction, WKNavigationActionPolicy,
+    WKNavigationDelegate, WKPermissionDecision, WKSecurityOrigin, WKUIDelegate, WKWebView,
+    WKWindowFeatures,
 };
 
 use crate::event::EngineEvent;
 
-use super::convert::{is_cancelled_error, ns_error_message, string_from_ns, webview_title, webview_url};
+use super::convert::{
+    is_cancelled_error, ns_error_message, string_from_ns, webview_title, webview_url,
+};
 
 /// Sends engine events without blocking WebKit's callbacks.
 pub(super) struct EventSink {
@@ -61,14 +63,16 @@ define_class!(
             navigation_action: &WKNavigationAction,
             decision_handler: &block2::DynBlock<dyn Fn(WKNavigationActionPolicy)>,
         ) {
-            let target_frame: Option<Retained<WKFrameInfo>> = unsafe { navigation_action.targetFrame() };
+            let target_frame: Option<Retained<WKFrameInfo>> =
+                unsafe { navigation_action.targetFrame() };
             let is_main_frame = target_frame
                 .as_ref()
                 .map(|frame| unsafe { frame.isMainFrame() })
                 .unwrap_or(false);
 
             let request = unsafe { navigation_action.request() };
-            let url = request.URL()
+            let url = request
+                .URL()
                 .and_then(|url| url.absoluteString())
                 .map(|url| url.to_string());
 
@@ -80,7 +84,9 @@ define_class!(
             if target_frame.is_none() && is_web_scheme(&url) {
                 // A page asked for a new window/tab (target="_blank" or
                 // window.open). The browser decides where it opens.
-                self.ivars().sink.send(EngineEvent::NewWindowRequested { url });
+                self.ivars()
+                    .sink
+                    .send(EngineEvent::NewWindowRequested { url });
                 decision_handler.call((WKNavigationActionPolicy::Cancel,));
                 return;
             }
@@ -97,7 +103,9 @@ define_class!(
             if !is_web_scheme(&url) {
                 // mailto:, tel:, custom app schemes and similar must be
                 // handed to the OS, never loaded as a page.
-                self.ivars().sink.send(EngineEvent::ExternalSchemeRequested { url });
+                self.ivars()
+                    .sink
+                    .send(EngineEvent::ExternalSchemeRequested { url });
                 decision_handler.call((WKNavigationActionPolicy::Cancel,));
                 return;
             }
@@ -112,11 +120,7 @@ define_class!(
         }
 
         #[unsafe(method(webView:didStartProvisionalNavigation:))]
-        fn did_start_provisional(
-            &self,
-            web_view: &WKWebView,
-            _navigation: Option<&WKNavigation>,
-        ) {
+        fn did_start_provisional(&self, web_view: &WKWebView, _navigation: Option<&WKNavigation>) {
             if let Some(url) = webview_url(web_view) {
                 self.ivars()
                     .sink
@@ -237,14 +241,19 @@ define_class!(
             _window_features: &WKWindowFeatures,
         ) -> Option<Retained<WKWebView>> {
             let request = unsafe { navigation_action.request() };
-            let url = request.URL()
+            let url = request
+                .URL()
                 .and_then(|url| url.absoluteString())
                 .map(|url| url.to_string());
             if let Some(url) = url {
                 if is_web_scheme(&url) {
-                    self.ivars().sink.send(EngineEvent::NewWindowRequested { url });
+                    self.ivars()
+                        .sink
+                        .send(EngineEvent::NewWindowRequested { url });
                 } else {
-                    self.ivars().sink.send(EngineEvent::ExternalSchemeRequested { url });
+                    self.ivars()
+                        .sink
+                        .send(EngineEvent::ExternalSchemeRequested { url });
                 }
             }
             // Returning nil cancels WebKit's own window; the browser opens the

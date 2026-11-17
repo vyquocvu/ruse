@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "m0-probe"
 path = "src/bin/m0_probe.rs"
 
+[[bin]]
+name = "m1-probe"
+path = "src/bin/m1_probe.rs"
+
 [dependencies]
 gpui.workspace = true
 browser-ui.workspace = true
@@ -26,5 +30,6 @@ tracing-subscriber.workspace = true
 raw-window-handle.workspace = true
 async-channel.workspace = true
 futures-lite.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 browser-testserver.workspace = true
