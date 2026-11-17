@@ -73,6 +73,8 @@ HTTPS smoke check, but core tests must be deterministic.
 ./scripts/m3-probe.sh          # history, bookmarks, find, downloads, clear site data
 ./scripts/m4-probe.sh          # settings persistence, palette, new tab, bookmark bar
 ./scripts/m5-probe.sh          # private windows and store isolation
+./scripts/lifecycle-probe.sh   # quit / last-tab-close lifecycle
+./scripts/bundle-smoke.sh      # packaged app: plist, signature, launch
 ```
 
 `scripts/cargo` sets a workspace-local `CARGO_HOME`; use it.

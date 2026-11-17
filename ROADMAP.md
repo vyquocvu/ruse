@@ -89,13 +89,16 @@ Evidence: `docs/milestones/M5.md`, `m5-probe`, `SECURITY.md`, ADR-0007/0008.
   location/notifications (unsupported), per-site cookie inspector,
   dangerous-file warnings.
 
-## M6 — Release hardening (next)
+## M6 — Release hardening — **done**
 
-- Performance baselines: cold/warm start, idle CPU, memory 1/5/10 tabs,
-  navigation latency, build/install size.
-- Test expansion, `cargo clippy -D warnings`, CI config.
-- App bundle (Info.plist, icon, signing notes), crash reporting guidance.
-- Limit: do not ship claims of sandbox isolation or Chromium compatibility.
+Evidence: `docs/milestones/M6.md`, `docs/testing/performance.md`,
+`scripts/perf.sh`, `scripts/package.sh`, `scripts/lifecycle-probe.sh`, CI.
+
+- Measured startup/navigation/memory/idle CPU for 1/5/10 tabs; adaptive ticker.
+- Release `.app` bundle with Info.plist, icon and ad-hoc signature; verified.
+- Native menu bar; stable quit / last-window-close lifecycle.
+- GitHub Actions CI for fmt/check/clippy/tests.
+- No sandbox/notarization claims; remaining backlog documented.
 
 ## Backlog (not scheduled)
 

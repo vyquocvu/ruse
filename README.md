@@ -12,7 +12,8 @@ and validated today.
 
 Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
 **M2 (tabs and sessions)**, **M3 (browser essentials)** and
-**M4 (modern experience)** and **M5 (privacy and security)** are complete:
+**M4 (modern experience)**, **M5 (privacy and security)** and
+**M6 (release hardening)** are complete:
 
 - Real native window with GPUI chrome: tab strip, toolbar, address bar, loading
   indicator, error page and a GPUI new-tab page.
@@ -36,8 +37,9 @@ Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
 - Verified evidence: `docs/milestones/M0.md` … `M5.md`; see `SECURITY.md` for
   the trust model and explicit non-guarantees.
 
-Release hardening (performance baselines, app bundle, permission prompts) is
-next — see `ROADMAP.md`.
+The first usable release is ready: a signed (ad-hoc) `.app` bundle, measured
+performance, native menus and a stable lifecycle. See `docs/milestones/M6.md`
+and `ROADMAP.md` for the remaining backlog.
 
 ## Requirements
 
@@ -65,6 +67,8 @@ builds also work in restricted environments.
 ./scripts/m3-probe.sh        # history, bookmarks, find, downloads, clear data
 ./scripts/m4-probe.sh        # settings persistence + palette across restarts
 ./scripts/m5-probe.sh        # private windows, store isolation, no leakage
+./scripts/lifecycle-probe.sh # Cmd+Q and last-tab-close terminate cleanly
+./scripts/bundle-smoke.sh   # package plist/signature/launch/WebKit smoke
 cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json target/m3-report.json target/m5-report.json
 ```
 
@@ -94,6 +98,26 @@ drives the real browser window with synthetic AppKit key events.
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset |
 | ⌘Q | Quit |
 
+## Package a .app
+
+```sh
+./scripts/package.sh
+open "target/package/GPUI Browser.app"
+```
+
+The bundle includes `Info.plist`, a generated icon and an ad-hoc signature. It
+is not notarized or sandboxed; do not distribute it as a hardened build.
+
+## Performance
+
+```sh
+./scripts/perf.sh
+```
+
+Release-build baseline (local fixtures): ~0.4 s startup, ~30–46 ms local
+navigation, 175 MB total for one tab to 422 MB for ten tabs, ~1–1.7% host CPU
+idle. Details and method: `docs/testing/performance.md`.
+
 ## Quality gates
 
 ```sh
@@ -118,6 +142,8 @@ drives the real browser window with synthetic AppKit key events.
 - `docs/milestones/M3.md` — browser essentials report
 - `docs/milestones/M4.md` — modern experience report
 - `docs/milestones/M5.md` — privacy and security report
+- `docs/milestones/M6.md` — release hardening report
+- `docs/testing/performance.md` — performance method and baseline
 - `SECURITY.md` — threat model, guarantees and non-guarantees
 
 ## Known limitations

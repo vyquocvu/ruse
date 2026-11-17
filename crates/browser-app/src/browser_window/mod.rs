@@ -69,6 +69,8 @@ pub struct BrowserWindow {
     palette: palette::PaletteState,
     new_tab_recents: Vec<HistoryEntry>,
     new_tab_loading: bool,
+    /// Counts idle polls so metadata IPC can be skipped between them.
+    idle_ticks: u32,
     private: bool,
     data_store: Option<PrivateDataStore>,
     popup_policy: PopupPolicy,
@@ -127,6 +129,7 @@ impl BrowserWindow {
             palette: palette::PaletteState::new(),
             new_tab_recents: Vec::new(),
             new_tab_loading: false,
+            idle_ticks: 0,
             private,
             data_store: if private {
                 match create_private_data_store() {
@@ -220,10 +223,19 @@ impl BrowserWindow {
     fn spawn_ticker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |weak, cx| {
             loop {
-                Timer::after(Duration::from_millis(90)).await;
-                let alive = weak.update_in(cx, |this, window, cx| this.tick(window, cx));
-                if alive.is_err() {
-                    break;
+                Timer::after(Duration::from_millis(80)).await;
+                match weak.update_in(cx, |this, window, cx| this.tick(window, cx)) {
+                    // Poll quickly while a page is loading or downloading and
+                    // back off when idle to keep CPU usage near zero.
+                    Ok(busy) => {
+                        Timer::after(if busy {
+                            Duration::from_millis(80)
+                        } else {
+                            Duration::from_millis(1200)
+                        })
+                        .await;
+                    }
+                    Err(_) => break,
                 }
             }
         })
@@ -232,14 +244,31 @@ impl BrowserWindow {
 
     /// Polls engine state that WebKit does not notify us about cheaply: load
     /// progress, SPA titles and same-document URL changes.
-    fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.update_download_progress(cx);
+        let downloading = self
+            .downloads
+            .entries
+            .iter()
+            .any(|entry| entry.status == downloads::DownloadStatus::Downloading);
         let Some(id) = self.tabs.active_id() else {
-            return;
+            return downloading;
         };
         let Some(engine) = self.runtimes.get(&id).cloned() else {
-            return;
+            return downloading;
         };
+        let loading = self
+            .tabs
+            .tab(id)
+            .is_some_and(|tab| tab.navigation.is_loading());
+        if !loading {
+            self.idle_ticks = self.idle_ticks.wrapping_add(1);
+        } else {
+            self.idle_ticks = 0;
+        }
+        // Idle pages rarely change title/URL; poll WebKit metadata only every
+        // fourth idle tick to keep IPC and CPU near zero with many tabs.
+        let poll_metadata = loading || self.idle_ticks % 4 == 1;
         let mut changed = false;
         if let Some(tab) = self.tabs.tab_mut(id) {
             if tab.navigation.is_loading() {
@@ -247,19 +276,21 @@ impl BrowserWindow {
                 tab.navigation.set_progress(engine.estimated_progress());
                 changed |= before != tab.navigation.progress_percent;
             }
-            if let Some(title) = engine.title().filter(|title| !title.trim().is_empty())
-                && title != tab.navigation.title
-            {
-                tab.navigation
-                    .apply(NavigationEvent::TitleChanged { title });
-                changed = true;
-            }
-            if let Some(url) = engine.current_url()
-                && url != tab.navigation.url
-                && !tab.navigation.url.is_empty()
-            {
-                tab.navigation.apply(NavigationEvent::UrlChanged { url });
-                changed = true;
+            if poll_metadata {
+                if let Some(title) = engine.title().filter(|title| !title.trim().is_empty())
+                    && title != tab.navigation.title
+                {
+                    tab.navigation
+                        .apply(NavigationEvent::TitleChanged { title });
+                    changed = true;
+                }
+                if let Some(url) = engine.current_url()
+                    && url != tab.navigation.url
+                    && !tab.navigation.url.is_empty()
+                {
+                    tab.navigation.apply(NavigationEvent::UrlChanged { url });
+                    changed = true;
+                }
             }
             if changed {
                 set_window_title(window, &tab.navigation, self.private);
@@ -269,6 +300,7 @@ impl BrowserWindow {
             self.sync_address(window, cx);
             cx.notify();
         }
+        loading || downloading
     }
 
     /// Serialises session writes on one background task so an older snapshot
@@ -1109,6 +1141,7 @@ impl BrowserWindow {
                     url: tab.navigation.url.clone(),
                     active: Some(tab.id) == active_id,
                     has_favicon: self.tab_favicons.contains_key(&tab.id),
+                    loading: tab.navigation.is_loading(),
                 })
                 .collect(),
         }
@@ -1717,6 +1750,7 @@ pub struct TabSnapshot {
     pub url: String,
     pub active: bool,
     pub has_favicon: bool,
+    pub loading: bool,
 }
 
 fn set_window_title(

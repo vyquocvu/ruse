@@ -36,6 +36,14 @@ pub fn launch(cx: &mut App) -> gpui::Result<WindowHandle<BrowserWindow>> {
     Theme::install_default(cx);
     bind_text_input_keys(cx);
     actions::bind_browser_keys(cx);
+    actions::install_menus(cx);
+    // Quit when the last window closes, like a standard document app.
+    cx.on_window_closed(|cx| {
+        if cx.windows().is_empty() {
+            cx.quit();
+        }
+    })
+    .detach();
     open_browser_window(cx, false)
 }
 

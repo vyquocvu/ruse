@@ -33,6 +33,14 @@ path = "src/bin/m4_probe.rs"
 name = "m5-probe"
 path = "src/bin/m5_probe.rs"
 
+[[bin]]
+name = "perf-probe"
+path = "src/bin/perf_probe.rs"
+
+[[bin]]
+name = "lifecycle-probe"
+path = "src/bin/lifecycle_probe.rs"
+
 [dependencies]
 gpui.workspace = true
 browser-ui.workspace = true

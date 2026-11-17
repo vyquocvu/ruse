@@ -1,6 +1,6 @@
 //! Browser-wide actions and their default key bindings.
 
-use gpui::{App, KeyBinding, actions};
+use gpui::{App, KeyBinding, Menu, MenuItem, SystemMenuType, actions};
 
 actions!(
     browser,
@@ -36,6 +36,59 @@ actions!(
         Quit,
     ]
 );
+
+/// Installs the native application menu bar.
+///
+/// Shortcut labels come from the key bindings registered with `bind_browser_keys`.
+pub fn install_menus(cx: &mut App) {
+    cx.set_menus(vec![
+        Menu {
+            name: "GPUI Browser".into(),
+            items: vec![
+                MenuItem::os_submenu("Services", SystemMenuType::Services),
+                MenuItem::separator(),
+                MenuItem::action("Quit GPUI Browser", Quit),
+            ],
+        },
+        Menu {
+            name: "File".into(),
+            items: vec![
+                MenuItem::action("New Tab", NewTab),
+                MenuItem::action("New Private Window", NewPrivateWindow),
+                MenuItem::separator(),
+                MenuItem::action("Close Tab", CloseTab),
+            ],
+        },
+        Menu {
+            name: "View".into(),
+            items: vec![
+                MenuItem::action("Reload", Reload),
+                MenuItem::action("Reload From Origin", HardReload),
+                MenuItem::separator(),
+                MenuItem::action("Zoom In", ZoomIn),
+                MenuItem::action("Zoom Out", ZoomOut),
+                MenuItem::action("Actual Size", ZoomReset),
+                MenuItem::separator(),
+                MenuItem::action("Find in Page", FindInPage),
+            ],
+        },
+        Menu {
+            name: "History".into(),
+            items: vec![
+                MenuItem::action("Show History", ToggleHistory),
+                MenuItem::action("Show Downloads", ToggleDownloads),
+            ],
+        },
+        Menu {
+            name: "Bookmarks".into(),
+            items: vec![
+                MenuItem::action("Bookmark This Page", ToggleBookmark),
+                MenuItem::action("Show Bookmarks", ToggleBookmarks),
+            ],
+        },
+    ]);
+    cx.on_action(|_: &Quit, cx| cx.quit());
+}
 
 /// Registers browser shortcuts.
 ///

@@ -50,6 +50,10 @@ Two probe binaries exist:
 - `m2-probe` runs in two OS processes: phase 1 creates tabs, duplicates, closes
   and reorders them, then waits for the session file; phase 2 relaunches and
   verifies restored order, active tab and lazy loading.
+- `lifecycle-probe` sends Cmd+Q and Cmd+W through real AppKit key events and
+  asserts the process exits and does not hang.
+- `perf-probe` measures startup, navigation, memory and idle CPU in a release
+  build for 1/5/10 tabs (`scripts/perf.sh`).
 - `m5-probe` opens one normal and two private windows and verifies ephemeral
   store isolation (from the persistent store and between private windows),
   intra-window private cookie sharing, and absence of private visits from
