@@ -9,6 +9,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use browser_core::SessionSnapshot;
+pub mod history;
+
+pub use history::HistoryStore;
+
 use thiserror::Error;
 
 /// Environment override used by automated probes and power users.
@@ -22,6 +26,8 @@ pub enum StorageError {
     NoDataDirectory,
     #[error("session file is corrupt: {0}")]
     CorruptSession(String),
+    #[error("database error: {0}")]
+    Database(String),
     #[error(transparent)]
     Io(#[from] io::Error),
 }

@@ -43,14 +43,20 @@ relaunch, verify order/active/lazy load); `m1-probe` favicon check.
   automatically triggerable through public APIs).
 - History within a restored tab is not persisted (fresh engine history).
 
-## M3 — Browser essentials (next)
+## M3 — Browser essentials (in progress)
 
-- History (SQLite, searchable), bookmarks + folders, bookmark bar.
-- Downloads: WKDownload destination selection, progress, cancel, open/reveal.
-- Search engine + homepage settings; zoom controls; find-in-page.
-- Copy URL; open link in new tab (policy from `NewWindowRequested`).
-- Context menus (native NSMenu for page actions), permissions prompts,
-  cookie management, clear browsing data.
+| Task | Status | Acceptance |
+| --- | --- | --- |
+| M3.1 History: SQLite recording + GPUI history page + delete/clear | done | `m3-probe`: visits recorded, page lists them, delete/clear persist across reload |
+| M3.2 Bookmarks + folders + manager page | next | add/remove current page, folders, open/delete entries; persisted |
+| M3.3 Downloads (WKDownload, destination, progress, cancel) | next | fixture `/download` saves a file and appears in the list |
+| M3.4 Find in page | next | Cmd+F finds text via WKWebView, next/previous, Esc closes |
+| M3.5 Cookie management + clear browsing data (cache/storage) | next | clear actions remove WebKit records; private data policy documented |
+| M3.6 Permissions prompts (camera/mic) via WKUIDelegate | next | prompt UI shown, denial/grant honored, decision remembered per origin |
+| M3.7 Context menus | next | page context menu is native WebKit; chrome right-click actions for tabs/bookmarks |
+
+History search in the UI, bookmark bar and download progress UI are refinements
+that can land in M4 if they are not essential to the acceptance tests.
 
 ## M4 — Modern experience
 

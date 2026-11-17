@@ -6,11 +6,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use browser_core::{
-    BrowserSettings, NavigationEvent, SessionSnapshot, Tab, TabId, TabSet, resolve_input,
+    BrowserSettings, HistoryEntry, NavigationEvent, SessionSnapshot, Tab, TabId, TabSet,
+    resolve_input, unix_millis_now,
 };
 use browser_engine::{Engine, EngineEvent, EngineOptions, Viewport, create_engine};
 use browser_platform::{BrowserShortcut, ShortcutMonitor, native_parent, open_external_url};
-use browser_storage::Storage;
+use browser_storage::{HistoryStore, Storage};
 use browser_ui::{TextInput, TextInputEvent, Theme};
 use gpui::{
     App, Context, Entity, FocusHandle, Focusable, RenderImage, SharedString, Subscription, Timer,
@@ -23,7 +24,8 @@ mod render;
 
 use crate::actions::{
     Back, CloseTab, DuplicateTab, FindInPage, FocusLocation, Forward, HardReload, NewTab, NextTab,
-    OpenSettings, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ZoomIn, ZoomOut, ZoomReset,
+    OpenSettings, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ToggleHistory, ZoomIn, ZoomOut,
+    ZoomReset,
 };
 
 pub struct BrowserWindow {
@@ -44,6 +46,11 @@ pub struct BrowserWindow {
     favicon_requests: HashSet<String>,
     /// JavaScript evaluation id -> (tab, origin, page URL) for icon discovery.
     pending_favicons: HashMap<u64, (TabId, String, String)>,
+    history: Option<HistoryStore>,
+    overlay: Overlay,
+    history_entries: Vec<HistoryEntry>,
+    history_loading: bool,
+    history_error: Option<String>,
     shortcuts: Option<ShortcutMonitor>,
     subscriptions: Vec<Subscription>,
     status: Option<SharedString>,
@@ -62,6 +69,9 @@ impl BrowserWindow {
         settings: BrowserSettings,
         storage: Option<Storage>,
     ) -> Self {
+        let history = storage
+            .as_ref()
+            .map(|storage| HistoryStore::in_directory(storage.root()));
         Self {
             tabs: TabSet::new(),
             runtimes: HashMap::new(),
@@ -75,6 +85,11 @@ impl BrowserWindow {
             favicon_misses: HashSet::new(),
             favicon_requests: HashSet::new(),
             pending_favicons: HashMap::new(),
+            history,
+            overlay: Overlay::None,
+            history_entries: Vec::new(),
+            history_loading: false,
+            history_error: None,
             shortcuts: None,
             subscriptions: Vec::new(),
             status: None,
@@ -493,6 +508,12 @@ impl BrowserWindow {
         }
         if let Some(url) = finished_url {
             self.schedule_favicon(id, &url, cx);
+            let title = self
+                .tabs
+                .tab(id)
+                .map(|tab| tab.navigation.title.clone())
+                .unwrap_or_default();
+            self.record_history(&url, &title, cx);
         }
         if notify {
             self.sync_address(window, cx);
@@ -884,6 +905,15 @@ impl BrowserWindow {
                     .map(|error| error.message.clone())
             }),
             address_text: self.address.read(cx).text().to_owned(),
+            overlay: self.overlay_name().to_owned(),
+            history_entries: self.history_entries.len(),
+            history_urls: self
+                .history_entries
+                .iter()
+                .map(|entry| entry.url.clone())
+                .collect(),
+            history_ids: self.history_entries.iter().map(|entry| entry.id).collect(),
+            history_loading: self.history_loading,
             tabs: self
                 .tabs
                 .tabs()
@@ -906,12 +936,143 @@ impl BrowserWindow {
     }
 
     fn page_should_show(&self, id: TabId, active: Option<TabId>) -> bool {
-        if active != Some(id) {
+        if active != Some(id) || self.overlay != Overlay::None {
             return false;
         }
         self.tabs
             .tab(id)
             .is_some_and(|tab| !tab.navigation.url.is_empty() && tab.navigation.error.is_none())
+    }
+
+    fn record_history(&self, url: &str, title: &str, cx: &Context<Self>) {
+        let Some(history) = self.history.clone() else {
+            return;
+        };
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return;
+        }
+        let url = url.to_owned();
+        let title = title.to_owned();
+        let visited_at = unix_millis_now();
+        cx.background_executor()
+            .spawn(async move {
+                if let Err(error) = history.record(&url, &title, visited_at) {
+                    tracing::warn!(%error, "could not record history");
+                }
+            })
+            .detach();
+    }
+
+    /// Opens the full-window history page (hides the native page view).
+    pub fn open_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.overlay = Overlay::History;
+        self.history_entries.clear();
+        self.history_error = None;
+        self.history_loading = true;
+        self.update_engine_visibility();
+        if let Err(error) = browser_platform::focus_chrome(window) {
+            tracing::warn!(%error, "could not focus the history page");
+        }
+        self.reload_history(cx);
+        cx.notify();
+    }
+
+    fn reload_history(&mut self, cx: &mut Context<Self>) {
+        let Some(history) = self.history.clone() else {
+            self.history_loading = false;
+            self.history_error =
+                Some("History is unavailable because storage failed to open".into());
+            cx.notify();
+            return;
+        };
+        self.history_loading = true;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            let result = executor.spawn(async move { history.recent(300) }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.history_loading = false;
+                match result {
+                    Ok(entries) => this.history_entries = entries,
+                    Err(error) => this.history_error = Some(error.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn toggle_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.overlay == Overlay::History {
+            self.close_overlay(window, cx);
+        } else {
+            self.open_history(window, cx);
+        }
+    }
+
+    pub fn close_overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.overlay == Overlay::None {
+            return;
+        }
+        self.overlay = Overlay::None;
+        self.update_engine_visibility();
+        if let Some(engine) = self.active_engine() {
+            engine.focus_page();
+        }
+        let _ = window;
+        cx.notify();
+    }
+
+    pub fn delete_history_entry(&mut self, id: i64, cx: &mut Context<Self>) {
+        let Some(history) = self.history.clone() else {
+            return;
+        };
+        self.history_entries.retain(|entry| entry.id != id);
+        cx.background_executor()
+            .spawn(async move {
+                if let Err(error) = history.delete(id) {
+                    tracing::warn!(%error, "could not delete history entry");
+                }
+            })
+            .detach();
+        cx.notify();
+    }
+
+    pub fn clear_history(&mut self, cx: &mut Context<Self>) {
+        let Some(history) = self.history.clone() else {
+            return;
+        };
+        self.history_entries.clear();
+        cx.background_executor()
+            .spawn(async move {
+                if let Err(error) = history.clear() {
+                    tracing::warn!(%error, "could not clear history");
+                }
+            })
+            .detach();
+        cx.notify();
+    }
+
+    pub fn open_history_entry(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.overlay = Overlay::None;
+        self.navigate(url, window, cx);
+        self.update_engine_visibility();
+    }
+
+    /// Exposed for probes: which full-window surface is visible, if any.
+    pub fn overlay_name(&self) -> &'static str {
+        match self.overlay {
+            Overlay::None => "none",
+            Overlay::History => "history",
+        }
+    }
+
+    pub fn history_entry_count(&self) -> usize {
+        self.history_entries.len()
+    }
+
+    /// Reloads the history page contents (probe helper).
+    pub fn refresh_history(&mut self, cx: &mut Context<Self>) {
+        self.reload_history(cx);
     }
 
     fn handle_shortcut(
@@ -932,6 +1093,10 @@ impl BrowserWindow {
             }
             BrowserShortcut::HardReload => self.hard_reload(cx),
             BrowserShortcut::Stop => {
+                if self.overlay != Overlay::None {
+                    self.close_overlay(window, cx);
+                    return;
+                }
                 if let Some(engine) = self.active_engine() {
                     engine.stop();
                 }
@@ -991,6 +1156,15 @@ impl BrowserWindow {
         self.handle_shortcut(BrowserShortcut::Stop, window, cx);
     }
 
+    fn on_toggle_history(
+        &mut self,
+        _: &ToggleHistory,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_history(window, cx);
+    }
+
     fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
         self.new_tab(window, cx);
     }
@@ -1047,6 +1221,13 @@ impl BrowserWindow {
     }
 }
 
+/// Full-window GPUI surfaces that temporarily replace page content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Overlay {
+    None,
+    History,
+}
+
 /// Observable browser state used by automated end-to-end probes.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct BrowserSnapshot {
@@ -1057,6 +1238,11 @@ pub struct BrowserSnapshot {
     pub error: Option<String>,
     pub address_text: String,
     pub tabs: Vec<TabSnapshot>,
+    pub overlay: String,
+    pub history_entries: usize,
+    pub history_urls: Vec<String>,
+    pub history_ids: Vec<i64>,
+    pub history_loading: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

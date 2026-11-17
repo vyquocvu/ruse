@@ -3,7 +3,7 @@
 //! Kept separate from state/actions so each file stays reviewable. These impls
 //! are on the same type and may access the window's private state.
 
-use browser_core::{NavigationEvent, TabId};
+use browser_core::{NavigationEvent, TabId, relative_time, unix_millis_now};
 use browser_ui::{
     TAB_STRIP_HEIGHT, Theme, icon_button, loading_bar, tab_chip, text_button, web_content_host,
 };
@@ -12,7 +12,7 @@ use gpui::{
     prelude::*, px,
 };
 
-use super::{BrowserWindow, Tab};
+use super::{BrowserWindow, Overlay, Tab};
 
 /// Drag payload for reordering tabs.
 #[derive(Clone)]
@@ -122,6 +122,180 @@ impl BrowserWindow {
             ))
     }
 
+    fn render_history(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+        let now = unix_millis_now();
+        let entries = self.history_entries.clone();
+        let count = entries.len();
+        let loading = self.history_loading;
+        let error = self.history_error.clone();
+
+        let header = div()
+            .h(px(58.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_3()
+            .px_6()
+            .border_b_1()
+            .border_color(theme.border)
+            .bg(theme.chrome)
+            .child(
+                div()
+                    .text_size(px(16.0))
+                    .text_color(theme.text)
+                    .child("History"),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme.text_muted)
+                    .child(if loading {
+                        "Loading…".to_owned()
+                    } else {
+                        format!("{count} {}", if count == 1 { "entry" } else { "entries" })
+                    }),
+            )
+            .child(div().flex_1())
+            .child(text_button(
+                theme,
+                "clear-history",
+                "Clear All",
+                cx.listener(|this, _event, _window, cx| this.clear_history(cx)),
+            ))
+            .child(icon_button(
+                theme,
+                "close-history",
+                "✕",
+                true,
+                cx.listener(|this, _event, window, cx| this.close_overlay(window, cx)),
+            ));
+
+        let body: AnyElement = if let Some(error) = error {
+            div()
+                .flex_1()
+                .p_6()
+                .text_size(px(12.0))
+                .text_color(theme.danger)
+                .child(format!("Could not load history: {error}"))
+                .into_any_element()
+        } else if loading && entries.is_empty() {
+            div()
+                .flex_1()
+                .p_6()
+                .text_size(px(12.0))
+                .text_color(theme.text_muted)
+                .child("Loading history…")
+                .into_any_element()
+        } else if entries.is_empty() {
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_1()
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .text_color(theme.text)
+                        .child("No browsing history yet"),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(theme.text_muted)
+                        .child("Pages you visit will appear here."),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .id("history-list")
+                .flex_1()
+                .overflow_y_scroll()
+                .px_4()
+                .py_2()
+                .flex()
+                .flex_col()
+                .children(entries.into_iter().map(move |entry| {
+                    let url = entry.url.clone();
+                    let id = entry.id;
+                    let row_hover = theme.surface_hover;
+                    div()
+                        .id(gpui::ElementId::named_usize("history-row", id as usize))
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .hover(move |row| row.bg(row_hover))
+                        .child(
+                            div()
+                                .id(gpui::ElementId::named_usize("history-open", id as usize))
+                                .flex()
+                                .flex_1()
+                                .min_w(px(0.0))
+                                .flex_col()
+                                .gap_1()
+                                .cursor_pointer()
+                                .on_click(cx.listener(move |this, _event, window, cx| {
+                                    this.open_history_entry(&url, window, cx)
+                                }))
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(13.0))
+                                        .text_color(theme.text)
+                                        .child(entry.display_title()),
+                                )
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(11.0))
+                                        .text_color(theme.text_muted)
+                                        .child(entry.url.clone()),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .w(px(110.0))
+                                .text_size(px(11.0))
+                                .text_color(theme.text_muted)
+                                .child(relative_time(entry.last_visited_at, now)),
+                        )
+                        .child(
+                            div()
+                                .id(gpui::ElementId::named_usize("history-delete", id as usize))
+                                .flex_none()
+                                .size(px(22.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_sm()
+                                .text_size(px(11.0))
+                                .text_color(theme.text_muted)
+                                .cursor_pointer()
+                                .hover(move |button| button.bg(theme.surface_active))
+                                .on_click(cx.listener(move |this, _event, _window, cx| {
+                                    this.delete_history_entry(id, cx)
+                                }))
+                                .child("✕"),
+                        )
+                }))
+                .into_any_element()
+        };
+
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .flex_col()
+            .bg(theme.background)
+            .child(header)
+            .child(body)
+    }
+
     fn render_toolbar(
         &self,
         theme: &Theme,
@@ -173,6 +347,13 @@ impl BrowserWindow {
                 has_page,
                 cx.listener(|this, _event, _window, cx| this.reload_or_stop(cx)),
             ))
+            .child(icon_button(
+                theme,
+                "history",
+                "◷",
+                true,
+                cx.listener(|this, _event, window, cx| this.toggle_history(window, cx)),
+            ))
             .child(
                 div()
                     .flex()
@@ -211,6 +392,10 @@ impl BrowserWindow {
         let mut content = div().flex_1().overflow_hidden().bg(theme.background);
         if let Some(engine) = engine {
             content = content.child(web_content_host(engine, show_page));
+        }
+
+        if self.overlay == Overlay::History {
+            return content.child(self.render_history(theme, cx));
         }
 
         if show_page {
@@ -342,6 +527,7 @@ impl Render for BrowserWindow {
             .on_action(cx.listener(Self::on_zoom_reset))
             .on_action(cx.listener(Self::on_find_in_page))
             .on_action(cx.listener(Self::on_open_settings))
+            .on_action(cx.listener(Self::on_toggle_history))
             .on_action(cx.listener(Self::on_quit))
             .child(self.render_tab_strip(&theme, cx))
             .child(self.render_toolbar(&theme, window, cx))

@@ -108,6 +108,7 @@ test.
 ./scripts/m0-probe.sh
 ./scripts/m1-probe.sh
 ./scripts/m2-probe.sh
+./scripts/m3-probe.sh
 ```
 
 ## Quality gates
