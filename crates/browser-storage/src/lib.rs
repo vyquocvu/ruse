@@ -11,9 +11,11 @@ use std::path::{Path, PathBuf};
 use browser_core::SessionSnapshot;
 pub mod bookmarks;
 pub mod history;
+pub mod settings;
 
 pub use bookmarks::BookmarkStore;
 pub use history::HistoryStore;
+pub use settings::SettingsStore;
 
 use thiserror::Error;
 

@@ -122,6 +122,166 @@ impl BrowserWindow {
             ))
     }
 
+    fn render_new_tab_page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let recents = self.new_tab_recents.clone();
+        let now_millis = unix_millis_now();
+        let recents_row =
+            div()
+                .w(px(680.0))
+                .flex()
+                .flex_col()
+                .gap_1()
+                .children(recents.into_iter().map(|entry| {
+                    let url = entry.url.clone();
+                    let hover = theme.surface_hover;
+                    div()
+                        .id(gpui::ElementId::named_usize(
+                            "newtab-recent",
+                            entry.id as usize,
+                        ))
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .hover(move |row| row.bg(hover))
+                        .on_click(cx.listener(move |this, _event, window, cx| {
+                            this.navigate(&url, window, cx)
+                        }))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.0))
+                                .truncate()
+                                .text_size(px(13.0))
+                                .text_color(theme.text)
+                                .child(entry.display_title()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(theme.text_muted)
+                                .child(relative_time(entry.last_visited_at, now_millis)),
+                        )
+                }));
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(90.0))
+            .gap_4()
+            .bg(theme.background)
+            .child(
+                div()
+                    .text_size(px(26.0))
+                    .text_color(theme.text)
+                    .child("GPUI Browser"),
+            )
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .text_color(theme.text_muted)
+                    .child("Press ⌘L to search or enter an address"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .pt_2()
+                    .child(text_button(
+                        theme,
+                        "newtab-history",
+                        "History",
+                        cx.listener(|this, _event, window, cx| this.open_history(window, cx)),
+                    ))
+                    .child(text_button(
+                        theme,
+                        "newtab-bookmarks",
+                        "Bookmarks",
+                        cx.listener(|this, _event, window, cx| this.open_bookmarks(window, cx)),
+                    ))
+                    .child(text_button(
+                        theme,
+                        "newtab-downloads",
+                        "Downloads",
+                        cx.listener(|this, _event, window, cx| this.open_downloads(window, cx)),
+                    ))
+                    .child(text_button(
+                        theme,
+                        "newtab-settings",
+                        "Settings",
+                        cx.listener(|this, _event, window, cx| this.open_settings(window, cx)),
+                    )),
+            )
+            .child(
+                div()
+                    .pt_4()
+                    .text_size(px(11.0))
+                    .text_color(theme.text_muted)
+                    .child(if self.new_tab_recents.is_empty() {
+                        "Pages you visit will appear here."
+                    } else {
+                        "Recent"
+                    }),
+            )
+            .child(recents_row)
+            .into_any_element()
+    }
+
+    fn render_bookmark_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let entries: Vec<_> = self.bookmarks.in_folder(None).cloned().collect();
+        div()
+            .h(px(30.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_2()
+            .bg(theme.chrome)
+            .border_b_1()
+            .border_color(theme.border)
+            .overflow_hidden()
+            .children(entries.into_iter().map(|bookmark| {
+                let url = bookmark.url.clone();
+                let hover = theme.surface_hover;
+                div()
+                    .id(gpui::ElementId::named_usize(
+                        "bookmark-bar-item",
+                        bookmark.id as usize,
+                    ))
+                    .flex()
+                    .items_center()
+                    .h(px(22.0))
+                    .max_w(px(180.0))
+                    .px_2()
+                    .rounded_sm()
+                    .truncate()
+                    .text_size(px(11.0))
+                    .text_color(theme.text)
+                    .cursor_pointer()
+                    .hover(move |item| item.bg(hover))
+                    .on_click(
+                        cx.listener(move |this, _event, window, cx| {
+                            this.navigate(&url, window, cx)
+                        }),
+                    )
+                    .child(bookmark.display_title())
+            }))
+            .child(div().flex_1())
+            .child(icon_button(
+                theme,
+                "bookmark-bar-manage",
+                "▤",
+                true,
+                cx.listener(|this, _event, window, cx| this.open_bookmarks(window, cx)),
+            ))
+            .into_any_element()
+    }
+
     fn render_find_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let input = self.find_input.clone();
         let status = match self.find_result {
@@ -455,6 +615,13 @@ impl BrowserWindow {
                 true,
                 cx.listener(|this, _event, window, cx| this.toggle_history(window, cx)),
             ))
+            .child(icon_button(
+                theme,
+                "settings",
+                "⚙",
+                true,
+                cx.listener(|this, _event, window, cx| this.open_settings(window, cx)),
+            ))
             .child(
                 div()
                     .flex()
@@ -503,6 +670,12 @@ impl BrowserWindow {
         }
         if self.overlay == Overlay::Downloads {
             return content.child(self.render_downloads_page(theme, cx));
+        }
+        if self.overlay == Overlay::Settings {
+            return content.child(self.render_settings_page(theme, cx));
+        }
+        if self.overlay == Overlay::Palette {
+            return content.child(self.render_palette(theme, cx));
         }
 
         if show_page {
@@ -564,29 +737,7 @@ impl BrowserWindow {
                 );
             }
             Some(tab) if tab.navigation.url.is_empty() => {
-                content = content.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .justify_center()
-                        .gap_2()
-                        .bg(theme.background)
-                        .child(
-                            div()
-                                .text_size(px(24.0))
-                                .text_color(theme.text)
-                                .child("New Tab"),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(13.0))
-                                .text_color(theme.text_muted)
-                                .child("Type a URL or search above. Press ⌘L to jump to the address bar."),
-                        ),
-                );
+                content = content.child(self.render_new_tab_page(theme, cx));
             }
             _ => {}
         }
@@ -641,9 +792,16 @@ impl Render for BrowserWindow {
             .on_action(cx.listener(Self::on_toggle_bookmarks))
             .on_action(cx.listener(Self::on_toggle_downloads))
             .on_action(cx.listener(Self::on_copy_url))
+            .on_action(cx.listener(Self::on_command_palette))
+            .on_action(cx.listener(Self::on_palette_next))
+            .on_action(cx.listener(Self::on_palette_previous))
             .on_action(cx.listener(Self::on_quit))
             .child(self.render_tab_strip(&theme, cx))
             .child(self.render_toolbar(&theme, window, cx))
+            .children(
+                (self.bookmark_bar_count_for_render() > 0 && self.overlay == Overlay::None)
+                    .then(|| self.render_bookmark_bar(&theme, cx)),
+            )
             .child(loading_bar(&theme, progress, loading))
             .children(self.find_open.then(|| self.render_find_bar(&theme, cx)))
             .child(self.render_content(&theme, cx))

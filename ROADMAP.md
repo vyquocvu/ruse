@@ -62,13 +62,20 @@ find-in-page, downloads, clear site data).
 Remaining M3 refinements (history search UI, download resume, per-site cookie
 manager) are tracked under M4/M5.
 
-## M4 — Modern experience (next)
+## M4 — Modern experience — **done** (with cosmetic deferrals)
 
-- Light/dark themes with OS appearance; customizable toolbar; sidebar.
-- Pinned tabs, tab grouping, command palette, quick search.
-- Recent sites, custom new tab page, settings UI, bookmark import/export.
+Evidence: `docs/milestones/M4.md`, `m4-probe` (two processes: settings edits,
+search behavior, homepage/theme restore).
 
-## M5 — Privacy and security
+- Light/dark/system themes with live OS appearance following.
+- Settings page (homepage, search engine, theme, privacy actions) persisted.
+- Command palette (Cmd+K) with commands, bookmarks, history and URL/search.
+- New-tab page with recent sites and quick actions.
+- Bookmark bar for unfiled bookmarks.
+- Deferred: customizable toolbar, sidebar, pinned tabs, tab grouping, bookmark
+  import/export, persisted download list.
+
+## M5 — Privacy and security (next)
 
 - Private windows with non-persistent data store; ephemeral session.
 - Cookie controls, permission prompts (location/camera/mic/notifications),

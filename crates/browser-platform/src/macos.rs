@@ -143,6 +143,7 @@ fn shortcut_for(event: &NSEvent) -> Option<BrowserShortcut> {
         3 => BrowserShortcut::FindInPage,
         38 if shift => BrowserShortcut::ToggleDownloads,
         8 if shift => BrowserShortcut::CopyUrl,
+        40 => BrowserShortcut::CommandPalette,
         5 if shift => BrowserShortcut::FindPrevious,
         5 => BrowserShortcut::FindNext,
         24 if shift => BrowserShortcut::ZoomIn,

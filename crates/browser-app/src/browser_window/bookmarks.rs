@@ -55,6 +55,13 @@ impl BookmarksState {
         }
     }
 
+    pub(super) fn count_unfiled(&self) -> usize {
+        self.bookmarks
+            .iter()
+            .filter(|bookmark| bookmark.folder_id.is_none())
+            .count()
+    }
+
     pub(super) fn is_bookmarked(&self, url: &str) -> bool {
         self.bookmarked_urls.contains(url)
     }

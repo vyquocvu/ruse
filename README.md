@@ -11,7 +11,8 @@ and validated today.
 ## Status
 
 Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
-**M2 (tabs and sessions)** and **M3 (browser essentials)** are complete:
+**M2 (tabs and sessions)**, **M3 (browser essentials)** and
+**M4 (modern experience)** are complete:
 
 - Real native window with GPUI chrome: tab strip, toolbar, address bar, loading
   indicator, error page and a GPUI new-tab page.
@@ -28,10 +29,12 @@ Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
   lazy-loaded on activation.
 - History (SQLite + GPUI page), bookmarks with folders, downloads manager,
   find-in-page, clear site data, copy URL and zoom.
-- Verified evidence: `docs/milestones/M0.md` … `M3.md`.
+- Settings page (homepage, search engine, theme), command palette, new-tab page
+  with recent sites, bookmark bar, light/dark themes.
+- Verified evidence: `docs/milestones/M0.md` … `M4.md`.
 
-Themes, settings UI, bookmark bar/sidebar, command palette and private browsing
-are next — see `ROADMAP.md`.
+Private browsing, permission prompts, cookie controls and release hardening are
+next — see `ROADMAP.md`.
 
 ## Requirements
 
@@ -57,6 +60,7 @@ builds also work in restricted environments.
 ./scripts/m1-probe.sh        # browser window: tabs, navigation, typing, favicon
 ./scripts/m2-probe.sh        # session persistence across two processes
 ./scripts/m3-probe.sh        # history, bookmarks, find, downloads, clear data
+./scripts/m4-probe.sh        # settings persistence + palette across restarts
 cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json target/m3-report.json
 ```
 
@@ -77,6 +81,7 @@ drives the real browser window with synthetic AppKit key events.
 | ⌘Y | History |
 | ⇧⌘B | Bookmarks |
 | ⇧⌘J | Downloads |
+| ⌘K | Command palette |
 | ⌘F / ⌘G / ⇧⌘G | Find / next / previous |
 | ⌘D | Bookmark current page |
 | ⇧⌘C | Copy current URL |
@@ -106,6 +111,7 @@ drives the real browser window with synthetic AppKit key events.
 - `docs/milestones/M1.md` — browser foundation report
 - `docs/milestones/M2.md` — tabs and sessions report
 - `docs/milestones/M3.md` — browser essentials report
+- `docs/milestones/M4.md` — modern experience report
 
 ## Known limitations
 

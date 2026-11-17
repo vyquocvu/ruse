@@ -187,6 +187,20 @@ macOS is implemented and tested. `browser-engine` returns
 WebView2 (Windows) or WebKitGTK (Linux) adapter. Do not add cross-platform
 abstractions that are not backed by a working adapter.
 
+## Settings, palette and new-tab surfaces
+
+Settings are a `BrowserSettings` model persisted atomically through one ordered
+background writer (`settings.json`). The settings page edits homepage,
+search-engine template and theme; theme changes reinstall the GPUI theme global
+and the OS-appearance observer only applies when the mode is System.
+
+The command palette is a GPUI overlay that combines static commands, bookmarks,
+recent history and the address-bar resolver (Go to / Search) into one filtered
+list. It owns a `TextInput` and uses key-context bindings for Up/Down.
+
+The new-tab page is a GPUI surface shown when the active tab has no URL; it
+loads recent history asynchronously and hides the native page view.
+
 ## Full-window surfaces
 
 History, bookmarks and downloads are GPUI pages rendered in the content area

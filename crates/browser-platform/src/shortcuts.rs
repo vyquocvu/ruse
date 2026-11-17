@@ -32,6 +32,7 @@ pub enum BrowserShortcut {
     FindPrevious,
     ToggleDownloads,
     CopyUrl,
+    CommandPalette,
     Quit,
 }
 

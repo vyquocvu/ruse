@@ -17,6 +17,6 @@ pub use history::{HistoryEntry, relative_time, unix_millis_now};
 pub use navigation::{LoadStatus, NavigationEvent, NavigationState};
 pub use search::SearchEngine;
 pub use session::{MAX_SESSION_TABS, SessionSnapshot, SessionTab};
-pub use settings::{BrowserSettings, DEFAULT_HOMEPAGE};
+pub use settings::{BrowserSettings, DEFAULT_HOMEPAGE, ThemeMode};
 pub use tab::{ClosedTab, Tab, TabId, TabSet};
 pub use url_input::{NavigationTarget, resolve_input};

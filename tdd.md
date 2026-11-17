@@ -50,6 +50,11 @@ Two probe binaries exist:
 - `m2-probe` runs in two OS processes: phase 1 creates tabs, duplicates, closes
   and reorders them, then waits for the session file; phase 2 relaunches and
   verifies restored order, active tab and lazy loading.
+- `m4-probe` runs two processes with a fixed-port fixture server: phase 1 edits
+  homepage/search/theme through the settings API, verifies the persisted JSON,
+  searches through the configured engine, exercises the command palette (command,
+  typed URL, selection), the new-tab recents and the bookmark bar; phase 2
+  relaunches and verifies the homepage, search engine and theme were restored.
 - `m3-probe` verifies history recording/opening/deleting/clearing, bookmark
   add/move/folder-delete/remove, find-in-page match and miss, a real WKDownload
   saved to disk and listed, and cookie/localStorage clearing observed by

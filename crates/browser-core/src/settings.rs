@@ -7,6 +7,17 @@ use crate::search::SearchEngine;
 /// Default home page: a small, fast, standards-compliant page.
 pub const DEFAULT_HOMEPAGE: &str = "https://example.com";
 
+/// How the browser chrome chooses its palette.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    /// Follow the operating system appearance.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 /// Settings the browser reads at startup and when resolving address-bar input.
 ///
 /// Persistence lives in `browser-storage` (M3); the model and its defaults are
@@ -17,6 +28,9 @@ pub struct BrowserSettings {
     pub homepage: String,
     /// Engine used for address-bar search queries.
     pub search_engine: SearchEngine,
+    /// Chrome palette preference.
+    #[serde(default)]
+    pub theme: ThemeMode,
 }
 
 impl Default for BrowserSettings {
@@ -24,6 +38,7 @@ impl Default for BrowserSettings {
         Self {
             homepage: DEFAULT_HOMEPAGE.to_owned(),
             search_engine: SearchEngine::duckduckgo(),
+            theme: ThemeMode::System,
         }
     }
 }
@@ -66,6 +81,7 @@ mod tests {
         let settings = BrowserSettings {
             homepage: "  ".into(),
             search_engine: SearchEngine::new("broken", ""),
+            theme: ThemeMode::System,
         }
         .sanitized();
         assert_eq!(settings.homepage, DEFAULT_HOMEPAGE);
@@ -73,10 +89,26 @@ mod tests {
     }
 
     #[test]
+    fn theme_defaults_to_system_and_round_trips() {
+        assert_eq!(BrowserSettings::default().theme, ThemeMode::System);
+        let json = serde_json::to_string(&BrowserSettings::default()).expect("serialize");
+        let decoded: BrowserSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.theme, ThemeMode::System);
+    }
+
+    #[test]
+    fn older_settings_files_without_theme_still_load() {
+        let json = r#"{"homepage":"https://example.com","search_engine":{"name":"DuckDuckGo","url_template":"https://duckduckgo.com/?q={query}"}}"#;
+        let decoded: BrowserSettings = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(decoded.theme, ThemeMode::System);
+    }
+
+    #[test]
     fn settings_round_trip_through_json() {
         let settings = BrowserSettings {
             homepage: "https://news.ycombinator.com".into(),
             search_engine: SearchEngine::new("Kagi", "https://kagi.com/search?q={query}"),
+            theme: ThemeMode::Dark,
         };
         let json = serde_json::to_string(&settings).expect("serialize");
         let decoded: BrowserSettings = serde_json::from_str(&json).expect("deserialize");

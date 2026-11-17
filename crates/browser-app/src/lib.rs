@@ -8,8 +8,8 @@ pub mod actions;
 pub mod browser_window;
 pub mod favicon;
 
-use browser_core::BrowserSettings;
-use browser_storage::Storage;
+use browser_core::ThemeMode;
+use browser_storage::{SettingsStore, Storage};
 use browser_ui::{TextInput, Theme, bind_text_input_keys};
 use gpui::{
     App, AppContext, Bounds, SharedString, TitlebarOptions, WindowBounds, WindowHandle,
@@ -37,6 +37,27 @@ pub fn launch(cx: &mut App) -> gpui::Result<WindowHandle<BrowserWindow>> {
     bind_text_input_keys(cx);
     actions::bind_browser_keys(cx);
 
+    let storage = match Storage::open_default() {
+        Ok(storage) => Some(storage),
+        Err(error) => {
+            tracing::warn!(%error, "persistence is disabled");
+            None
+        }
+    };
+    let settings_store = storage
+        .as_ref()
+        .map(|storage| SettingsStore::in_directory(storage.root()));
+    let settings = settings_store
+        .as_ref()
+        .and_then(|store| match store.load() {
+            Ok(settings) => settings,
+            Err(error) => {
+                tracing::warn!(%error, "ignoring unreadable settings file");
+                None
+            }
+        })
+        .unwrap_or_default();
+
     let bounds = Bounds::centered(None, size(px(1280.0), px(820.0)), cx);
     let handle = cx.open_window(
         WindowOptions {
@@ -49,17 +70,15 @@ pub fn launch(cx: &mut App) -> gpui::Result<WindowHandle<BrowserWindow>> {
             ..Default::default()
         },
         move |window, cx| {
-            Theme::install(cx, Theme::for_appearance(window.appearance()));
-            let address = cx.new(|cx| TextInput::new(cx, "Search or enter address", px(13.0)));
-            let settings = BrowserSettings::default();
-            let storage = match Storage::open_default() {
-                Ok(storage) => Some(storage),
-                Err(error) => {
-                    tracing::warn!(%error, "session persistence is disabled");
-                    None
-                }
+            let theme = match settings.theme {
+                ThemeMode::System => Theme::for_appearance(window.appearance()),
+                ThemeMode::Light => Theme::light(),
+                ThemeMode::Dark => Theme::dark(),
             };
-            let browser = cx.new(|cx| BrowserWindow::new(cx, address, settings, storage));
+            Theme::install(cx, theme);
+            let address = cx.new(|cx| TextInput::new(cx, "Search or enter address", px(13.0)));
+            let browser =
+                cx.new(|cx| BrowserWindow::new(cx, address, settings, storage, settings_store));
             browser.update(cx, |this, cx| this.attach(window, cx));
             browser
         },

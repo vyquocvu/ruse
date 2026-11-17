@@ -11,8 +11,8 @@ use browser_core::{
 };
 use browser_engine::{Engine, EngineEvent, EngineOptions, Viewport, create_engine};
 use browser_platform::{BrowserShortcut, ShortcutMonitor, native_parent, open_external_url};
-use browser_storage::{BookmarkStore, HistoryStore, Storage};
-use browser_ui::{TextInput, TextInputEvent, Theme};
+use browser_storage::{BookmarkStore, HistoryStore, SettingsStore, Storage};
+use browser_ui::{TextInput, TextInputEvent};
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, RenderImage, SharedString,
     Subscription, Timer, WeakEntity, Window, px,
@@ -22,13 +22,15 @@ use crate::favicon;
 
 mod bookmarks;
 mod downloads;
+mod palette;
 mod render;
+mod settings;
 
 use crate::actions::{
-    Back, CloseTab, CopyUrl, DuplicateTab, FindInPage, FindNext, FindPrevious, FocusLocation,
-    Forward, HardReload, NewTab, NextTab, OpenSettings, PreviousTab, Quit, Reload, ReopenClosedTab,
-    Stop, ToggleBookmark, ToggleBookmarks, ToggleDownloads, ToggleHistory, ZoomIn, ZoomOut,
-    ZoomReset,
+    Back, CloseTab, CommandPalette, CopyUrl, DuplicateTab, FindInPage, FindNext, FindPrevious,
+    FocusLocation, Forward, HardReload, NewTab, NextTab, OpenSettings, PaletteNext,
+    PalettePrevious, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ToggleBookmark,
+    ToggleBookmarks, ToggleDownloads, ToggleHistory, ZoomIn, ZoomOut, ZoomReset,
 };
 
 pub struct BrowserWindow {
@@ -37,6 +39,7 @@ pub struct BrowserWindow {
     address: Entity<TextInput>,
     focus_handle: FocusHandle,
     settings: BrowserSettings,
+    settings_page: settings::SettingsState,
     storage: Option<Storage>,
     /// Serialises session writes; see `start_session_writer`.
     session_sender: Option<async_channel::Sender<SessionSnapshot>>,
@@ -59,6 +62,9 @@ pub struct BrowserWindow {
     find_input: Option<Entity<TextInput>>,
     find_result: Option<bool>,
     downloads: downloads::DownloadsState,
+    palette: palette::PaletteState,
+    new_tab_recents: Vec<HistoryEntry>,
+    new_tab_loading: bool,
     shortcuts: Option<ShortcutMonitor>,
     subscriptions: Vec<Subscription>,
     status: Option<SharedString>,
@@ -76,6 +82,7 @@ impl BrowserWindow {
         address: Entity<TextInput>,
         settings: BrowserSettings,
         storage: Option<Storage>,
+        settings_store: Option<SettingsStore>,
     ) -> Self {
         let history = storage
             .as_ref()
@@ -91,6 +98,7 @@ impl BrowserWindow {
             address,
             focus_handle: cx.focus_handle(),
             settings,
+            settings_page: settings::SettingsState::new(settings_store),
             storage,
             session_sender: None,
             favicon_cache: HashMap::new(),
@@ -108,6 +116,9 @@ impl BrowserWindow {
             find_input: None,
             find_result: None,
             downloads: downloads::DownloadsState::default(),
+            palette: palette::PaletteState::new(),
+            new_tab_recents: Vec::new(),
+            new_tab_loading: false,
             shortcuts: None,
             subscriptions: Vec::new(),
             status: None,
@@ -118,6 +129,7 @@ impl BrowserWindow {
     pub fn attach(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.install_shortcut_monitor(window, cx);
         self.start_session_writer(cx);
+        self.start_settings_writer(cx);
         self.spawn_ticker(window, cx);
         self.observe_address(window, cx);
         self.observe_appearance(window, cx);
@@ -176,8 +188,8 @@ impl BrowserWindow {
     }
 
     fn observe_appearance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let subscription = cx.observe_window_appearance(window, |_this, window, cx| {
-            Theme::install(cx, Theme::for_appearance(window.appearance()));
+        let subscription = cx.observe_window_appearance(window, |this, window, cx| {
+            this.apply_theme(window, cx);
             cx.notify();
         });
         self.subscriptions.push(subscription);
@@ -368,6 +380,7 @@ impl BrowserWindow {
             });
         }
         self.sync_address(window, cx);
+        self.refresh_new_tab(cx);
         self.persist_session();
         cx.notify();
         Some(id)
@@ -745,6 +758,7 @@ impl BrowserWindow {
         }
         self.update_engine_visibility();
         self.ensure_tab_loaded(id, cx);
+        self.refresh_new_tab(cx);
         self.sync_address(window, cx);
         if let Some(engine) = self.active_engine() {
             engine.focus_page();
@@ -764,6 +778,7 @@ impl BrowserWindow {
             return;
         }
         self.update_engine_visibility();
+        self.refresh_new_tab(cx);
         self.sync_address(window, cx);
         self.persist_session();
         cx.notify();
@@ -1019,6 +1034,22 @@ impl BrowserWindow {
                 .iter()
                 .filter(|entry| entry.status == downloads::DownloadStatus::Completed)
                 .count(),
+            settings_homepage: self.settings.homepage.clone(),
+            settings_search_template: self.settings.search_engine.url_template.clone(),
+            settings_theme: format!("{:?}", self.settings.theme).to_lowercase(),
+            new_tab_recents: self
+                .new_tab_recents
+                .iter()
+                .map(|entry| entry.url.clone())
+                .collect(),
+            bookmark_bar_count: self.bookmarks.in_folder(None).count(),
+            palette_open: self.palette.open,
+            palette_selected: self.palette.selected,
+            palette_items: self
+                .filtered_palette_items(cx)
+                .into_iter()
+                .map(|item| item.label)
+                .collect(),
             tabs: self
                 .tabs
                 .tabs()
@@ -1038,6 +1069,10 @@ impl BrowserWindow {
         for (id, engine) in &self.runtimes {
             engine.set_visible(self.page_should_show(*id, active));
         }
+    }
+
+    fn bookmark_bar_count_for_render(&self) -> usize {
+        self.bookmarks.count_unfiled()
     }
 
     fn page_should_show(&self, id: TabId, active: Option<TabId>) -> bool {
@@ -1165,6 +1200,33 @@ impl BrowserWindow {
     }
 
     /// Opens the full-window history page (hides the native page view).
+    /// Loads recent sites for the new-tab page when it is visible.
+    pub fn refresh_new_tab(&mut self, cx: &mut Context<Self>) {
+        let visible = self
+            .tabs
+            .active_tab()
+            .is_some_and(|tab| tab.navigation.url.is_empty());
+        if !visible {
+            return;
+        }
+        let Some(history) = self.history.clone() else {
+            return;
+        };
+        self.new_tab_loading = true;
+        let executor = cx.background_executor().clone();
+        cx.spawn(async move |this, cx| {
+            let recents = executor.spawn(async move { history.recent(8) }).await;
+            let _ = this.update(cx, |this, cx| {
+                this.new_tab_loading = false;
+                if let Ok(entries) = recents {
+                    this.new_tab_recents = entries;
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     pub fn open_history(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.overlay = Overlay::History;
         self.history_entries.clear();
@@ -1294,6 +1356,8 @@ impl BrowserWindow {
             Overlay::History => "history",
             Overlay::Bookmarks => "bookmarks",
             Overlay::Downloads => "downloads",
+            Overlay::Settings => "settings",
+            Overlay::Palette => "palette",
         }
     }
 
@@ -1351,14 +1415,12 @@ impl BrowserWindow {
             BrowserShortcut::ZoomIn => self.zoom(0.1, cx),
             BrowserShortcut::ZoomOut => self.zoom(-0.1, cx),
             BrowserShortcut::ZoomReset => self.reset_zoom(cx),
-            BrowserShortcut::OpenSettings => {
-                self.status = Some("Settings arrive with the modern-experience milestone".into());
-                cx.notify();
-            }
+            BrowserShortcut::OpenSettings => self.open_settings(window, cx),
             BrowserShortcut::ToggleBookmark => self.toggle_bookmark(window, cx),
             BrowserShortcut::ToggleBookmarks => self.toggle_bookmarks(window, cx),
             BrowserShortcut::ToggleDownloads => self.toggle_downloads(window, cx),
             BrowserShortcut::CopyUrl => self.copy_url(cx),
+            BrowserShortcut::CommandPalette => self.open_palette(window, cx),
             BrowserShortcut::Quit => cx.quit(),
         }
     }
@@ -1419,6 +1481,28 @@ impl BrowserWindow {
         cx: &mut Context<Self>,
     ) {
         self.toggle_bookmarks(window, cx);
+    }
+
+    fn on_command_palette(
+        &mut self,
+        _: &CommandPalette,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_palette(window, cx);
+    }
+
+    fn on_palette_next(&mut self, _: &PaletteNext, _window: &mut Window, cx: &mut Context<Self>) {
+        self.palette_select_next(cx);
+    }
+
+    fn on_palette_previous(
+        &mut self,
+        _: &PalettePrevious,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.palette_select_previous(cx);
     }
 
     fn on_copy_url(&mut self, _: &CopyUrl, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1487,9 +1571,8 @@ impl BrowserWindow {
         self.find_previous(window, cx);
     }
 
-    fn on_open_settings(&mut self, _: &OpenSettings, _window: &mut Window, cx: &mut Context<Self>) {
-        self.status = Some("Settings arrive with the modern-experience milestone".into());
-        cx.notify();
+    fn on_open_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_settings(window, cx);
     }
 
     fn on_quit(&mut self, _: &Quit, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1504,6 +1587,8 @@ enum Overlay {
     History,
     Bookmarks,
     Downloads,
+    Settings,
+    Palette,
 }
 
 /// Observable browser state used by automated end-to-end probes.
@@ -1534,6 +1619,14 @@ pub struct BrowserSnapshot {
     pub download_paths: Vec<String>,
     pub download_statuses: Vec<String>,
     pub downloads_completed: usize,
+    pub settings_homepage: String,
+    pub settings_search_template: String,
+    pub settings_theme: String,
+    pub new_tab_recents: Vec<String>,
+    pub bookmark_bar_count: usize,
+    pub palette_open: bool,
+    pub palette_selected: usize,
+    pub palette_items: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

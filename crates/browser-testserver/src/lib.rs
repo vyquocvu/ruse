@@ -21,7 +21,13 @@ pub struct TestServer {
 impl TestServer {
     /// Starts the server on `127.0.0.1:0`.
     pub fn start() -> std::io::Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
+        Self::start_on(0)
+    }
+
+    /// Starts the server on a specific port (0 picks a free port). Used by
+    /// multi-process probes that must keep URLs stable across restarts.
+    pub fn start_on(port: u16) -> std::io::Result<Self> {
+        let listener = TcpListener::bind(("127.0.0.1", port))?;
         listener.set_nonblocking(true)?;
         let addr = listener.local_addr()?;
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -165,6 +171,12 @@ fn route(path: &str) -> (&'static str, &'static str, Vec<u8>, &'static str) {
         // implicit fallback.
         "/icon" => ("200 OK", "image/png", ICON_PNG.to_vec(), ""),
         "/favicon.ico" => ("404 Not Found", "text/plain", b"no icon".to_vec(), ""),
+        "/search" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            SEARCH_PAGE.as_bytes().to_vec(),
+            "",
+        ),
         "/storage" => (
             "200 OK",
             "text/html; charset=utf-8",
@@ -217,6 +229,15 @@ const FAVICON_PAGE: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Favicon Fixture</title>
 <link rel="icon" href="/icon">
 </head><body><h1>favicon</h1></body></html>"#;
+
+const SEARCH_PAGE: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>search-pending</title></head>
+<body><h1>search results</h1>
+<script>
+var query = new URLSearchParams(location.search).get('q') || '';
+document.title = 'search-' + query;
+</script>
+</body></html>"#;
 
 const STORAGE_PAGE: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>storage-pending</title></head>
