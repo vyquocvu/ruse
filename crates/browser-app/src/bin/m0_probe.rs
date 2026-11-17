@@ -69,6 +69,7 @@ fn main() {
                     initial_url: None,
                     private: false,
                     downloads_dir: std::env::temp_dir(),
+                    data_store: None,
                 }) {
                     Ok(instance) => instance,
                     Err(error) => {
@@ -567,6 +568,7 @@ async fn run_probe(
         initial_url: Some(page_two_url.clone()),
         private: false,
         downloads_dir: std::env::temp_dir(),
+        data_store: None,
     })
     .map_err(|error| error.to_string())?;
     let (second_engine, second_events) = second_instance.into_parts();

@@ -95,6 +95,44 @@ pub fn unique_download_path(directory: &Path, filename: &str) -> PathBuf {
     directory.join(format!("{stem}-{}", std::process::id()))
 }
 
+/// Bounds how many new windows a page can request in a short interval.
+///
+/// Every `window.open`/`target=_blank` opens a tab in this browser, so a
+/// malicious page could otherwise exhaust memory and attention.
+#[derive(Debug, Clone)]
+pub struct PopupPolicy {
+    max_per_window: usize,
+    window: std::time::Duration,
+    timestamps: Vec<std::time::Instant>,
+}
+
+impl PopupPolicy {
+    pub fn new(max_per_window: usize, window: std::time::Duration) -> Self {
+        Self {
+            max_per_window,
+            window,
+            timestamps: Vec::new(),
+        }
+    }
+
+    /// Records a request and returns whether it may open a new tab.
+    pub fn allow(&mut self, now: std::time::Instant) -> bool {
+        self.timestamps
+            .retain(|timestamp| now.duration_since(*timestamp) < self.window);
+        if self.timestamps.len() >= self.max_per_window {
+            return false;
+        }
+        self.timestamps.push(now);
+        true
+    }
+}
+
+impl Default for PopupPolicy {
+    fn default() -> Self {
+        Self::new(5, std::time::Duration::from_secs(3))
+    }
+}
+
 /// Whether a URL may be navigated by the browser itself.
 pub fn is_allowed_navigation_scheme(scheme: &str) -> bool {
     matches!(
@@ -155,6 +193,18 @@ mod tests {
         assert_eq!(second.file_name().unwrap(), "file (1).txt");
         assert_eq!(second.parent(), Some(directory.as_path()));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn popup_policy_rate_limits_and_recovers() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let mut policy = PopupPolicy::new(3, Duration::from_secs(2));
+        assert!(policy.allow(start));
+        assert!(policy.allow(start + Duration::from_millis(100)));
+        assert!(policy.allow(start + Duration::from_millis(200)));
+        assert!(!policy.allow(start + Duration::from_millis(300)));
+        assert!(policy.allow(start + Duration::from_secs(3)));
     }
 
     #[test]

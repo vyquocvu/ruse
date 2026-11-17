@@ -63,6 +63,20 @@ impl BrowserWindow {
             .border_b_1()
             .border_color(theme.border)
             .window_control_area(WindowControlArea::Drag)
+            .children(self.private.then(|| {
+                div()
+                    .flex_none()
+                    .h(px(22.0))
+                    .px_2()
+                    .flex()
+                    .items_center()
+                    .rounded_sm()
+                    .bg(theme.surface_active)
+                    .text_size(px(10.0))
+                    .text_color(theme.text_muted)
+                    .child("Private")
+                    .into_any_element()
+            }))
             .children(tabs.into_iter().enumerate().map(|(index, tab)| {
                 let id = tab.id;
                 let entity = cx.entity();
@@ -775,6 +789,7 @@ impl Render for BrowserWindow {
             .on_action(cx.listener(Self::on_hard_reload))
             .on_action(cx.listener(Self::on_stop))
             .on_action(cx.listener(Self::on_new_tab))
+            .on_action(cx.listener(Self::on_new_private_window))
             .on_action(cx.listener(Self::on_close_tab))
             .on_action(cx.listener(Self::on_duplicate_tab))
             .on_action(cx.listener(Self::on_reopen_closed_tab))

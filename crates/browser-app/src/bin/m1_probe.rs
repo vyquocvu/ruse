@@ -74,6 +74,11 @@ async fn run_probe(
     })
     .await
     .ok_or("startup page did not finish loading")?;
+    if snapshot.secure != Some(true) {
+        report.fail("https_indicator", format!("secure={:?}", snapshot.secure));
+    } else {
+        report.pass("https_indicator", "startup page is HTTPS");
+    }
     if snapshot.tab_count == 1 && !snapshot.active_title.is_empty() {
         report.pass(
             "startup",
@@ -107,6 +112,14 @@ async fn run_probe(
         report.pass("navigate", snapshot.active_url.clone());
     } else {
         report.fail("navigate", format!("title={}", snapshot.active_title));
+    }
+    if snapshot.secure == Some(false) {
+        report.pass("insecure_indicator", "HTTP page flagged as not secure");
+    } else {
+        report.fail(
+            "insecure_indicator",
+            format!("secure={:?}", snapshot.secure),
+        );
     }
 
     // 3. Back and forward through real engine history.

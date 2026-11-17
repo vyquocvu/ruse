@@ -187,6 +187,14 @@ macOS is implemented and tested. `browser-engine` returns
 WebView2 (Windows) or WebKitGTK (Linux) adapter. Do not add cross-platform
 abstractions that are not backed by a working adapter.
 
+## Privacy boundary
+
+Private windows are isolated windows: the engine receives one opaque
+`PrivateDataStore` (a non-persistent `WKWebsiteDataStore`) created per window and
+shared by its tabs. History recording and session writes are skipped for private
+windows; cookie/site-data clearing is available for any window. See
+`SECURITY.md` and ADR-0007 for the full model and non-guarantees.
+
 ## Settings, palette and new-tab surfaces
 
 Settings are a `BrowserSettings` model persisted atomically through one ordered

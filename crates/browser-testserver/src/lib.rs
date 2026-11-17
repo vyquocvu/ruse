@@ -177,6 +177,12 @@ fn route(path: &str) -> (&'static str, &'static str, Vec<u8>, &'static str) {
             SEARCH_PAGE.as_bytes().to_vec(),
             "",
         ),
+        "/private-marker" => (
+            "200 OK",
+            "text/html; charset=utf-8",
+            PRIVATE_MARKER_PAGE.as_bytes().to_vec(),
+            "",
+        ),
         "/storage" => (
             "200 OK",
             "text/html; charset=utf-8",
@@ -238,6 +244,10 @@ var query = new URLSearchParams(location.search).get('q') || '';
 document.title = 'search-' + query;
 </script>
 </body></html>"#;
+
+const PRIVATE_MARKER_PAGE: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>Private Marker</title></head>
+<body><h1>private marker</h1></body></html>"#;
 
 const STORAGE_PAGE: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>storage-pending</title></head>

@@ -135,6 +135,7 @@ fn shortcut_for(event: &NSEvent) -> Option<BrowserShortcut> {
         15 if shift => BrowserShortcut::HardReload,
         15 => BrowserShortcut::Reload,
         46 => BrowserShortcut::Stop,
+        45 if shift => BrowserShortcut::NewPrivateWindow,
         17 if shift => BrowserShortcut::ReopenClosedTab,
         17 => BrowserShortcut::NewTab,
         13 => BrowserShortcut::CloseTab,

@@ -39,6 +39,49 @@ impl NativeParent {
     }
 }
 
+/// An opaque, session-scoped browser data store.
+///
+/// Private windows create one store and share it across their tabs so pages in
+/// the same private window see the same cookies/storage, while the store is
+/// discarded when the window closes. The contents are platform-private: only
+/// the creating adapter may use it.
+#[derive(Clone)]
+pub struct PrivateDataStore {
+    inner: Rc<dyn std::any::Any>,
+}
+
+impl PrivateDataStore {
+    /// Wraps a platform object. Only platform adapters construct this.
+    pub(crate) fn new<T: 'static>(value: T) -> Self {
+        Self {
+            inner: Rc::new(value),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn downcast_ref<T: 'static>(&self) -> Option<&T> {
+        self.inner.downcast_ref::<T>()
+    }
+}
+
+impl std::fmt::Debug for PrivateDataStore {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("PrivateDataStore(..)")
+    }
+}
+
+/// Creates a new ephemeral data store for a private window.
+pub fn create_private_data_store() -> Result<PrivateDataStore, EngineError> {
+    #[cfg(target_os = "macos")]
+    {
+        crate::macos::create_private_data_store()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err(EngineError::UnsupportedPlatform)
+    }
+}
+
 /// Options used to create an engine instance.
 #[derive(Debug, Clone)]
 pub struct EngineOptions {
@@ -50,6 +93,9 @@ pub struct EngineOptions {
     pub private: bool,
     /// Directory where downloads are written. The browser creates it if needed.
     pub downloads_dir: PathBuf,
+    /// A shared ephemeral store for private windows. When set, `private` is
+    /// implied and all tabs sharing this store share cookies/storage.
+    pub data_store: Option<PrivateDataStore>,
 }
 
 /// Operations the browser can perform on a web page.
@@ -74,6 +120,9 @@ pub trait Engine {
 
     /// Stops the in-flight load.
     fn stop(&self);
+
+    /// Clears only HTTP cookies, leaving caches and local storage intact.
+    fn clear_cookies(&self);
 
     /// Clears cookies, caches and site storage for this engine's data store.
     ///

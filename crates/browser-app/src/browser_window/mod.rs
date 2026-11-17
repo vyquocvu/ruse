@@ -9,8 +9,12 @@ use browser_core::{
     BrowserSettings, HistoryEntry, NavigationEvent, SessionSnapshot, Tab, TabId, TabSet,
     resolve_input, unix_millis_now,
 };
-use browser_engine::{Engine, EngineEvent, EngineOptions, Viewport, create_engine};
+use browser_engine::{
+    Engine, EngineEvent, EngineOptions, PrivateDataStore, Viewport, create_engine,
+    create_private_data_store,
+};
 use browser_platform::{BrowserShortcut, ShortcutMonitor, native_parent, open_external_url};
+use browser_security::PopupPolicy;
 use browser_storage::{BookmarkStore, HistoryStore, SettingsStore, Storage};
 use browser_ui::{TextInput, TextInputEvent};
 use gpui::{
@@ -28,8 +32,8 @@ mod settings;
 
 use crate::actions::{
     Back, CloseTab, CommandPalette, CopyUrl, DuplicateTab, FindInPage, FindNext, FindPrevious,
-    FocusLocation, Forward, HardReload, NewTab, NextTab, OpenSettings, PaletteNext,
-    PalettePrevious, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ToggleBookmark,
+    FocusLocation, Forward, HardReload, NewPrivateWindow, NewTab, NextTab, OpenSettings,
+    PaletteNext, PalettePrevious, PreviousTab, Quit, Reload, ReopenClosedTab, Stop, ToggleBookmark,
     ToggleBookmarks, ToggleDownloads, ToggleHistory, ZoomIn, ZoomOut, ZoomReset,
 };
 
@@ -65,6 +69,9 @@ pub struct BrowserWindow {
     palette: palette::PaletteState,
     new_tab_recents: Vec<HistoryEntry>,
     new_tab_loading: bool,
+    private: bool,
+    data_store: Option<PrivateDataStore>,
+    popup_policy: PopupPolicy,
     shortcuts: Option<ShortcutMonitor>,
     subscriptions: Vec<Subscription>,
     status: Option<SharedString>,
@@ -83,6 +90,7 @@ impl BrowserWindow {
         settings: BrowserSettings,
         storage: Option<Storage>,
         settings_store: Option<SettingsStore>,
+        private: bool,
     ) -> Self {
         let history = storage
             .as_ref()
@@ -119,6 +127,19 @@ impl BrowserWindow {
             palette: palette::PaletteState::new(),
             new_tab_recents: Vec::new(),
             new_tab_loading: false,
+            private,
+            data_store: if private {
+                match create_private_data_store() {
+                    Ok(store) => Some(store),
+                    Err(error) => {
+                        tracing::warn!(%error, "using a per-tab ephemeral store instead");
+                        None
+                    }
+                }
+            } else {
+                None
+            },
+            popup_policy: PopupPolicy::default(),
             shortcuts: None,
             subscriptions: Vec::new(),
             status: None,
@@ -128,18 +149,19 @@ impl BrowserWindow {
     /// Wires up window-scoped services and opens the startup tab.
     pub fn attach(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.install_shortcut_monitor(window, cx);
-        self.start_session_writer(cx);
+        if !self.private {
+            self.start_session_writer(cx);
+        }
         self.start_settings_writer(cx);
         self.spawn_ticker(window, cx);
         self.observe_address(window, cx);
         self.observe_appearance(window, cx);
-        if self.restore_session(window, cx) {
-            self.focus_address(window, cx);
-        } else {
+        let restored = !self.private && self.restore_session(window, cx);
+        if !restored {
             let homepage = self.settings.homepage_or_default().to_owned();
             self.open_tab(&homepage, window, cx);
-            self.focus_address(window, cx);
         }
+        self.focus_address(window, cx);
     }
 
     fn install_shortcut_monitor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -240,7 +262,7 @@ impl BrowserWindow {
                 changed = true;
             }
             if changed {
-                set_window_title(window, &tab.navigation);
+                set_window_title(window, &tab.navigation, self.private);
             }
         }
         if changed {
@@ -269,6 +291,9 @@ impl BrowserWindow {
     }
 
     fn persist_session(&self) {
+        if self.private {
+            return;
+        }
         let Some(sender) = self.session_sender.as_ref() else {
             return;
         };
@@ -406,8 +431,9 @@ impl BrowserWindow {
             parent,
             viewport: Viewport::default(),
             initial_url,
-            private: false,
+            private: self.private,
             downloads_dir: browser_platform::downloads_directory(),
+            data_store: self.data_store.clone(),
         }) {
             Ok(instance) => instance,
             Err(error) => {
@@ -476,6 +502,11 @@ impl BrowserWindow {
                 cx.notify();
                 return;
             }
+            EngineEvent::CookiesCleared => {
+                self.status = Some("Cookies cleared".into());
+                cx.notify();
+                return;
+            }
             EngineEvent::DownloadStarted {
                 url,
                 filename,
@@ -500,6 +531,11 @@ impl BrowserWindow {
                 return;
             }
             EngineEvent::NewWindowRequested { url } => {
+                if !self.popup_policy.allow(std::time::Instant::now()) {
+                    self.status = Some("Popup blocked: too many windows requested".into());
+                    cx.notify();
+                    return;
+                }
                 self.open_tab(url, window, cx);
                 return;
             }
@@ -552,7 +588,7 @@ impl BrowserWindow {
                     tab.navigation.apply(NavigationEvent::ProcessTerminated);
                 }
                 EngineEvent::FindResult { .. } => {}
-                EngineEvent::BrowsingDataCleared => {}
+                EngineEvent::BrowsingDataCleared | EngineEvent::CookiesCleared => {}
                 EngineEvent::ScriptResult { .. }
                 | EngineEvent::ScriptError { .. }
                 | EngineEvent::SnapshotSaved { .. }
@@ -565,7 +601,7 @@ impl BrowserWindow {
                 | EngineEvent::DownloadFinished { .. } => unreachable!("handled above"),
             }
             if notify && is_active {
-                set_window_title(window, &tab.navigation);
+                set_window_title(window, &tab.navigation, self.private);
             }
         }
         if let Some(url) = finished_url {
@@ -700,7 +736,7 @@ impl BrowserWindow {
         self.address
             .update(cx, |input, cx| input.set_text(url.clone(), cx));
         if let Some(tab) = self.tabs.tab(id) {
-            set_window_title(window, &tab.navigation);
+            set_window_title(window, &tab.navigation, self.private);
         }
         cx.notify();
     }
@@ -881,6 +917,15 @@ impl BrowserWindow {
         }
     }
 
+    /// Opens a new private window (ephemeral data store, no history/session).
+    pub fn open_private_window(&mut self, cx: &mut Context<Self>) {
+        if let Err(error) = crate::open_browser_window(cx, true) {
+            tracing::error!(%error, "could not open a private window");
+            self.status = Some("Could not open a private window".into());
+            cx.notify();
+        }
+    }
+
     pub fn new_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_tab("", window, cx);
         self.focus_address(window, cx);
@@ -1050,6 +1095,11 @@ impl BrowserWindow {
                 .into_iter()
                 .map(|item| item.label)
                 .collect(),
+            private: self.private,
+            secure: self
+                .tabs
+                .active_tab()
+                .map(|tab| tab.navigation.url.starts_with("https://")),
             tabs: self
                 .tabs
                 .tabs()
@@ -1181,6 +1231,9 @@ impl BrowserWindow {
     }
 
     fn record_history(&self, url: &str, title: &str, cx: &Context<Self>) {
+        if self.private {
+            return;
+        }
         let Some(history) = self.history.clone() else {
             return;
         };
@@ -1202,6 +1255,10 @@ impl BrowserWindow {
     /// Opens the full-window history page (hides the native page view).
     /// Loads recent sites for the new-tab page when it is visible.
     pub fn refresh_new_tab(&mut self, cx: &mut Context<Self>) {
+        if self.private {
+            self.new_tab_recents.clear();
+            return;
+        }
         let visible = self
             .tabs
             .active_tab()
@@ -1297,6 +1354,19 @@ impl BrowserWindow {
                 }
             })
             .detach();
+        cx.notify();
+    }
+
+    /// Clears only HTTP cookies across every tab's data store.
+    pub fn clear_cookies(&mut self, cx: &mut Context<Self>) {
+        let engines: Vec<Rc<dyn Engine>> = self.runtimes.values().cloned().collect();
+        if engines.is_empty() {
+            return;
+        }
+        self.status = Some("Clearing cookies…".into());
+        for engine in engines {
+            engine.clear_cookies();
+        }
         cx.notify();
     }
 
@@ -1405,6 +1475,7 @@ impl BrowserWindow {
                 cx.notify();
             }
             BrowserShortcut::NewTab => self.new_tab(window, cx),
+            BrowserShortcut::NewPrivateWindow => self.open_private_window(cx),
             BrowserShortcut::CloseTab => self.close_active_tab(window, cx),
             BrowserShortcut::ReopenClosedTab => self.reopen_closed_tab(window, cx),
             BrowserShortcut::NextTab => self.cycle_tab(true, window, cx),
@@ -1518,6 +1589,15 @@ impl BrowserWindow {
         self.toggle_downloads(window, cx);
     }
 
+    fn on_new_private_window(
+        &mut self,
+        _: &NewPrivateWindow,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_private_window(cx);
+    }
+
     fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
         self.new_tab(window, cx);
     }
@@ -1627,6 +1707,8 @@ pub struct BrowserSnapshot {
     pub palette_open: bool,
     pub palette_selected: usize,
     pub palette_items: Vec<String>,
+    pub private: bool,
+    pub secure: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -1637,7 +1719,15 @@ pub struct TabSnapshot {
     pub has_favicon: bool,
 }
 
-fn set_window_title(window: &mut Window, navigation: &browser_core::NavigationState) {
+fn set_window_title(
+    window: &mut Window,
+    navigation: &browser_core::NavigationState,
+    private: bool,
+) {
     let label = navigation.display_title();
-    window.set_window_title(&format!("{label} — GPUI Browser"));
+    if private {
+        window.set_window_title(&format!("{label} — GPUI Browser (Private)"));
+    } else {
+        window.set_window_title(&format!("{label} — GPUI Browser"));
+    }
 }

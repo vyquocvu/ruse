@@ -383,6 +383,42 @@ async fn run(
     .await
     .ok_or("storage fixture did not persist a cookie and localStorage value")?;
 
+    // Cookie-only clearing leaves localStorage intact.
+    update(handle, cx, |browser, _window, cx| browser.clear_cookies(cx))?;
+    Timer::after(Duration::from_millis(800)).await;
+    let mut cookie_cleared = None;
+    for _ in 0..10 {
+        update(handle, cx, |browser, window, cx| {
+            browser.navigate(storage_url, window, cx)
+        })?;
+        if let Some(snapshot) = wait_for(handle, cx, Duration::from_secs(10), |snapshot| {
+            !snapshot.loading && snapshot.active_title.starts_with("storage-")
+        })
+        .await
+            && snapshot.active_title == "storage-clear-set"
+        {
+            cookie_cleared = Some(snapshot.active_title);
+            break;
+        }
+        Timer::after(Duration::from_millis(400)).await;
+    }
+    let cookie_cleared = cookie_cleared.ok_or_else(|| {
+        format!(
+            "cookie-only clear did not take effect; title {:?}",
+            read_snapshot(handle, cx).map(|snapshot| snapshot.active_title)
+        )
+    })?;
+    checks.insert("clear_cookies".into(), cookie_cleared);
+
+    // Restore the cookie, then clear all site data (cookies + localStorage).
+    update(handle, cx, |browser, window, cx| {
+        browser.navigate(storage_set_url, window, cx)
+    })?;
+    wait_for(handle, cx, Duration::from_secs(20), |snapshot| {
+        !snapshot.loading && snapshot.active_title == "storage-set-set"
+    })
+    .await
+    .ok_or("storage fixture did not restore its values")?;
     update(handle, cx, |browser, _window, cx| {
         browser.clear_browsing_data(cx)
     })?;

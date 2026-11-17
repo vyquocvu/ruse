@@ -75,15 +75,21 @@ search behavior, homepage/theme restore).
 - Deferred: customizable toolbar, sidebar, pinned tabs, tab grouping, bookmark
   import/export, persisted download list.
 
-## M5 — Privacy and security (next)
+## M5 — Privacy and security — **done** (permission prompts deferred)
 
-- Private windows with non-persistent data store; ephemeral session.
-- Cookie controls, permission prompts (location/camera/mic/notifications),
-  popup policy, download restrictions, external URL safety, HTTPS indicators.
-- Clear site data; per-site data isolation documentation; bridge hardening.
-- Document WebKit's real security boundaries.
+Evidence: `docs/milestones/M5.md`, `m5-probe`, `SECURITY.md`, ADR-0007/0008.
 
-## M6 — Release hardening
+- Private windows: per-window ephemeral store, no history/session, isolated from
+  the persistent store and from each other.
+- Clear cookies only, clear all site data, clear history.
+- Popup rate limiting; external-scheme handoff; `javascript:` rejected.
+- HTTPS/“Not secure” address-bar indicators.
+- Security/trust-boundary documentation with explicit non-guarantees.
+- Deferred: camera/microphone prompt UI (needs signed bundle + Info.plist),
+  location/notifications (unsupported), per-site cookie inspector,
+  dangerous-file warnings.
+
+## M6 — Release hardening (next)
 
 - Performance baselines: cold/warm start, idle CPU, memory 1/5/10 tabs,
   navigation latency, build/install size.

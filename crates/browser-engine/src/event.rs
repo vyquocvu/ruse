@@ -80,6 +80,8 @@ pub enum EngineEvent {
     },
     /// Website data (cookies, caches, storage) was cleared.
     BrowsingDataCleared,
+    /// HTTP cookies were cleared, leaving other site data intact.
+    CookiesCleared,
     /// A download finished or failed.
     DownloadFinished {
         path: PathBuf,

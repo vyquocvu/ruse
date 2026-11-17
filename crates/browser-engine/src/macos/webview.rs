@@ -2,6 +2,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -12,7 +13,7 @@ use objc2::{ClassType, MainThreadMarker, MainThreadOnly, msg_send};
 use objc2_app_kit::{
     NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSImage, NSView,
 };
-use objc2_foundation::{NSDate, NSDictionary, NSError, NSString};
+use objc2_foundation::{NSArray, NSDate, NSDictionary, NSError, NSString};
 use objc2_web_kit::{
     WKFindConfiguration, WKFindResult, WKSnapshotConfiguration, WKWebView, WKWebViewConfiguration,
     WKWebsiteDataStore,
@@ -62,7 +63,14 @@ impl WkEngine {
         let sink = EventSink::new(sender);
 
         let configuration = unsafe { WKWebViewConfiguration::new(mtm) };
-        if options.private {
+        if let Some(data_store) = options.data_store.as_ref() {
+            let Some(store) = data_store.downcast_ref::<Rc<Retained<WKWebsiteDataStore>>>() else {
+                return Err(EngineError::Platform(
+                    "private data store belongs to another platform".to_owned(),
+                ));
+            };
+            unsafe { configuration.setWebsiteDataStore(store) };
+        } else if options.private {
             let store = unsafe { WKWebsiteDataStore::nonPersistentDataStore(mtm) };
             unsafe { configuration.setWebsiteDataStore(&store) };
         }
@@ -183,6 +191,57 @@ impl Engine for WkEngine {
         // SAFETY: main-thread WebKit call.
         unsafe {
             self.webview.stopLoading();
+        }
+    }
+
+    fn clear_cookies(&self) {
+        let Ok(mtm) = main_thread_marker() else {
+            return;
+        };
+        let configuration = unsafe { self.webview.configuration() };
+        let store = unsafe { configuration.websiteDataStore() };
+        let cookie_store = unsafe { store.httpCookieStore() };
+        if MainThreadMarker::new().is_none() {
+            return;
+        }
+        let _ = mtm;
+        let sink = self.sink.clone();
+        let remaining = Rc::new(Cell::new(0usize));
+        let remaining_for_delete = remaining.clone();
+        let sink_for_delete = sink.clone();
+        let delete_completion = RcBlock::new(move || {
+            let left = remaining_for_delete.get().saturating_sub(1);
+            remaining_for_delete.set(left);
+            if left == 0 {
+                sink_for_delete.send(EngineEvent::CookiesCleared);
+            }
+        });
+        let cookie_store_for_all = cookie_store.clone();
+        let all_cookies = RcBlock::new(
+            move |cookies: NonNull<NSArray<objc2_foundation::NSHTTPCookie>>| {
+                // SAFETY: WebKit passes a valid array of NSHTTPCookie.
+                let cookies = unsafe { cookies.as_ref() };
+                let count = cookies.count();
+                if count == 0 {
+                    sink.send(EngineEvent::CookiesCleared);
+                    return;
+                }
+                remaining.set(count);
+                for index in 0..count {
+                    // SAFETY: index is within bounds.
+                    let cookie = cookies.objectAtIndex(index);
+                    // SAFETY: main-thread WebKit call; the completion block is
+                    // copied by WebKit and may outlive this frame.
+                    unsafe {
+                        cookie_store_for_all
+                            .deleteCookie_completionHandler(&cookie, Some(&delete_completion));
+                    }
+                }
+            },
+        );
+        // SAFETY: main-thread WebKit call with retained completion blocks.
+        unsafe {
+            cookie_store.getAllCookies(&all_cookies);
         }
     }
 

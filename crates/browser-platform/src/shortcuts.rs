@@ -17,6 +17,7 @@ pub enum BrowserShortcut {
     HardReload,
     Stop,
     NewTab,
+    NewPrivateWindow,
     CloseTab,
     ReopenClosedTab,
     NextTab,

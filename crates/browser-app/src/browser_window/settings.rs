@@ -363,6 +363,12 @@ impl BrowserWindow {
                             .gap_2()
                             .child(text_button(
                                 theme,
+                                "settings-clear-cookies",
+                                "Clear cookies",
+                                cx.listener(|this, _event, _window, cx| this.clear_cookies(cx)),
+                            ))
+                            .child(text_button(
+                                theme,
                                 "settings-clear-site-data",
                                 "Clear site data",
                                 cx.listener(|this, _event, _window, cx| {

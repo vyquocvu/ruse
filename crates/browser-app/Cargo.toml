@@ -29,6 +29,10 @@ path = "src/bin/m3_probe.rs"
 name = "m4-probe"
 path = "src/bin/m4_probe.rs"
 
+[[bin]]
+name = "m5-probe"
+path = "src/bin/m5_probe.rs"
+
 [dependencies]
 gpui.workspace = true
 browser-ui.workspace = true

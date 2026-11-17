@@ -36,7 +36,17 @@ pub fn launch(cx: &mut App) -> gpui::Result<WindowHandle<BrowserWindow>> {
     Theme::install_default(cx);
     bind_text_input_keys(cx);
     actions::bind_browser_keys(cx);
+    open_browser_window(cx, false)
+}
 
+/// Opens a browser window, optionally in private mode.
+///
+/// Key bindings and themes are process-wide, so callers should invoke this
+/// directly for additional windows (for example Cmd+Shift+N).
+pub fn open_browser_window(
+    cx: &mut App,
+    private: bool,
+) -> gpui::Result<WindowHandle<BrowserWindow>> {
     let storage = match Storage::open_default() {
         Ok(storage) => Some(storage),
         Err(error) => {
@@ -77,8 +87,9 @@ pub fn launch(cx: &mut App) -> gpui::Result<WindowHandle<BrowserWindow>> {
             };
             Theme::install(cx, theme);
             let address = cx.new(|cx| TextInput::new(cx, "Search or enter address", px(13.0)));
-            let browser =
-                cx.new(|cx| BrowserWindow::new(cx, address, settings, storage, settings_store));
+            let browser = cx.new(|cx| {
+                BrowserWindow::new(cx, address, settings, storage, settings_store, private)
+            });
             browser.update(cx, |this, cx| this.attach(window, cx));
             browser
         },

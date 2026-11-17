@@ -72,6 +72,7 @@ HTTPS smoke check, but core tests must be deterministic.
 ./scripts/m2-probe.sh          # session persistence across a real relaunch
 ./scripts/m3-probe.sh          # history, bookmarks, find, downloads, clear site data
 ./scripts/m4-probe.sh          # settings persistence, palette, new tab, bookmark bar
+./scripts/m5-probe.sh          # private windows and store isolation
 ```
 
 `scripts/cargo` sets a workspace-local `CARGO_HOME`; use it.

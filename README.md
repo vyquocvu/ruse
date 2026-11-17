@@ -12,7 +12,7 @@ and validated today.
 
 Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
 **M2 (tabs and sessions)**, **M3 (browser essentials)** and
-**M4 (modern experience)** are complete:
+**M4 (modern experience)** and **M5 (privacy and security)** are complete:
 
 - Real native window with GPUI chrome: tab strip, toolbar, address bar, loading
   indicator, error page and a GPUI new-tab page.
@@ -31,9 +31,12 @@ Milestones **M0 (engine feasibility)**, **M1 (browser foundation)**,
   find-in-page, clear site data, copy URL and zoom.
 - Settings page (homepage, search engine, theme), command palette, new-tab page
   with recent sites, bookmark bar, light/dark themes.
-- Verified evidence: `docs/milestones/M0.md` … `M4.md`.
+- Private windows with ephemeral storage, no history or session leakage.
+- Clear cookies/site data/history, popup rate limiting, HTTPS indicators.
+- Verified evidence: `docs/milestones/M0.md` … `M5.md`; see `SECURITY.md` for
+  the trust model and explicit non-guarantees.
 
-Private browsing, permission prompts, cookie controls and release hardening are
+Release hardening (performance baselines, app bundle, permission prompts) is
 next — see `ROADMAP.md`.
 
 ## Requirements
@@ -61,7 +64,8 @@ builds also work in restricted environments.
 ./scripts/m2-probe.sh        # session persistence across two processes
 ./scripts/m3-probe.sh        # history, bookmarks, find, downloads, clear data
 ./scripts/m4-probe.sh        # settings persistence + palette across restarts
-cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json target/m3-report.json
+./scripts/m5-probe.sh        # private windows, store isolation, no leakage
+cat target/m0-report.json target/m1-report.json target/m2-report-phase2.json target/m3-report.json target/m5-report.json
 ```
 
 The M0 probe writes a page snapshot to `target/m0-snapshot.png`. The M1 probe
@@ -85,6 +89,7 @@ drives the real browser window with synthetic AppKit key events.
 | ⌘F / ⌘G / ⇧⌘G | Find / next / previous |
 | ⌘D | Bookmark current page |
 | ⇧⌘C | Copy current URL |
+| ⇧⌘N | New private window |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset |
 | ⌘Q | Quit |
@@ -112,6 +117,8 @@ drives the real browser window with synthetic AppKit key events.
 - `docs/milestones/M2.md` — tabs and sessions report
 - `docs/milestones/M3.md` — browser essentials report
 - `docs/milestones/M4.md` — modern experience report
+- `docs/milestones/M5.md` — privacy and security report
+- `SECURITY.md` — threat model, guarantees and non-guarantees
 
 ## Known limitations
 
@@ -121,5 +128,7 @@ drives the real browser window with synthetic AppKit key events.
   focus; the monitor is implemented, but real-key interception is on the manual
   checklist (`docs/testing/manual-checklist.md`).
 - WebKit is not Chromium: no Chromium-grade site isolation or extension
-  compatibility is claimed or implied.
+  compatibility is claimed or implied (see SECURITY.md).
+- Camera/microphone access is denied by default until signed packaging adds
+  permission prompts.
 - Favicons and find-in-page are being built on top of WebKit primitives.
