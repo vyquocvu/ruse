@@ -3,7 +3,8 @@
 Date: 2026-11-17. Host: macOS 27.2.1, Apple Silicon, Rust 1.97.1, GPUI 0.2.2.
 
 This document records what was verified from source and by prototype, not from
-README claims. The working prototype is `m0-probe` plus `browser-engine`'s
+README claims. For the wry-versus-Servo comparison, see
+[wry-vs-servo.md](wry-vs-servo.md). The working prototype is `m0-probe` plus `browser-engine`'s
 `macos` module.
 
 ## UI framework: GPUI 0.2.2 (crates.io, published 2025-10-22)

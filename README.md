@@ -135,6 +135,7 @@ idle. Details and method: `docs/testing/performance.md`.
 - `tdd.md` — testing strategy
 - `ROADMAP.md` — milestones and status
 - `docs/research/engine-integration.md` — engine/UI research
+- `docs/research/wry-vs-servo.md` — wry (system WebView) vs Servo (embedded engine)
 - `docs/decisions/` — ADRs (embedding, engine choice, overlays, tabs)
 - `docs/milestones/M0.md` — feasibility report
 - `docs/milestones/M1.md` — browser foundation report
